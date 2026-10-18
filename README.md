@@ -204,7 +204,7 @@ Reports go to the [mu300-linux issues](https://github.com/dikeckaan/mu300-linux/
 | `tests/` | the installer's local checks: `python3 -m unittest discover tests` |
 
 To rebuild the drivers, use `kernel/build-audio.sh` in mu300-linux: it fetches the same driver sources at a pinned
-revision, applies the same seven patches and builds the same 23 modules against the release's 5.4 kernel.
+revision, applies the same eight patches and builds the same 23 modules against the release's 5.4 kernel.
 
 ## Credits
 

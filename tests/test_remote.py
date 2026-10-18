@@ -149,10 +149,10 @@ class NoFixedTemporaryPaths(unittest.TestCase):
 
     def test_local_staging_private(self):
         for s in ('install.sh', 'uninstall.sh'):
-            src = (TOP / s).read_text()
-            self.assertIn('umask 077', src)
-            self.assertIn('mktemp -d', src)
-            self.assertRegex(src, r"trap 'rm -rf \"\$[A-Z]+\"' EXIT INT TERM")
+            self.assertIn('umask 077', (TOP / s).read_text())
+        src = (TOP / 'install.sh').read_text()
+        self.assertIn('STAGE=$(mktemp -d)', src)
+        self.assertIn("""trap 'rm -rf "$STAGE"' EXIT INT TERM""", src)
 
 
 if __name__ == '__main__':

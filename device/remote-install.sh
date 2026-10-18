@@ -5,17 +5,13 @@ set -eu
 SRC=$1
 KREL=$2
 export PATH="$PATH:/opt/mu300/bin:/opt/mu300/busybox-bin:/usr/sbin:/sbin"
-# Where the backups and the list of installed files live: somewhere that survives a reboot, or uninstall.sh has
-# nothing to put back. /var/lib on Ubuntu; on OpenWrt /var is /tmp (tmpfs), so /etc/mu300/audio there (and
-# mu300-update carries /etc/mu300 over to a new release). uninstall.sh looks in the same places.
-if [ -f /etc/openwrt_release ]; then STATE=/etc/mu300/audio; else STATE=/var/lib/mu300-audio; fi
-BK=$STATE/backup
-MANIFEST=$STATE/installed
-# an install on OpenWrt before this kept them in /var/lib/mu300-audio: still there in this boot, they move over
-if [ "$STATE" != /var/lib/mu300-audio ] && [ -f /var/lib/mu300-audio/installed ] && [ ! -e "$STATE" ]; then
-    mkdir -p "${STATE%/*}"
-    cp -a /var/lib/mu300-audio "$STATE" && rm -rf /var/lib/mu300-audio
-fi
+umask 022
+# STATE, BK, MANIFEST and the checks on them (device/state.sh): the list is acted on as root, so it is read only from
+# a directory root alone can write, and only the paths this installer installs may be in it
+. "$SRC/state.sh"
+[ "$KREL" = "$KREL_AUDIO" ] || { echo "unexpected kernel release $KREL" >&2; exit 1; }
+state_ok || exit 1
+manifest_ok || exit 1
 
 running=$(uname -r)
 if [ "$running" != "$KREL" ] && [ ! -f "$SRC/stage-only" ]; then
@@ -29,7 +25,9 @@ fi
 [ -d "/lib/modules/$KREL" ] || { echo "no /lib/modules/$KREL: this system has never had kernel 5.4 installed (mu300-update kernel 5.4)" >&2; exit 1; }
 
 if [ -f /etc/openwrt_release ]; then SYS=openwrt; else SYS=systemd; fi
-mkdir -p "$BK" /etc/mu300
+mkdir -p /etc/mu300
+(umask 077; mkdir -p "$BK")
+state_ok || exit 1
 # back up a path once - the first install's original is the one uninstall restores
 backup() {
     for p in "$@"; do
@@ -97,6 +95,8 @@ done
 installed /etc/mu300/voice.conf
 if [ -f "$SRC/headset" ]; then
     h=$(cat "$SRC/headset")
+    case $h in [0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]) ;;
+        *) echo "the headset address is not AA:BB:CC:DD:EE:FF; not set" >&2; exit 1 ;; esac
     sed -i "s/^BT_HEADSET=.*/BT_HEADSET=$h/" /etc/mu300/voice.conf
 fi
 # the call follower

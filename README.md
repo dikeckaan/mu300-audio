@@ -35,17 +35,22 @@ firmware package, and `.gitignore` keeps firmware images and vendor XMLs out of 
 * A computer with `ssh` and `tar` (Linux or macOS; `sshpass` saves the password prompts, `python3` is needed only
   for `--params` XMLs).
 
-## The firmware (you supply it)
+## The firmware
 
-One file: the audio DSP image of a **UMS9620 / T760** phone. The image measured on an F50 is the **ZTE Voyage 41S**
-image (远航 41S):
+One file: the audio DSP image of a **UMS9620 / T760** phone. It is not in this repository. The tested image is
+published separately, in [mu300-audio-firmware](https://github.com/dikeckaan/mu300-audio-firmware) (release
+`v1.0`, `agdsp.bin`): `./install.sh --download-firmware` fetches it and uses it **only if its sha256 is exactly the
+pinned one** below, and refuses anything else. On a device with internet, `mu300-audio-dsp install --download` does
+the same there (mu300-linux releases after v2026.10.18.1). Or bring your own (`--firmware FILE`, see below).
+
+The image measured on an F50 is the **ZTE Voyage 41S** image (远航 41S):
 
 * **6291456 bytes** (6 MiB);
 * its header starts with `SharkL5_AUDCP_` (for example `SharkL5_AUDCP_2022Y_VER_2548`; "SharkL5" is Unisoc's
   lineage name, and it is right for this SoC);
 * sha256 `378ceea7…b937` (in full: `378ceea78dbf013e10625e71efd6fab487d727e371884ae8daf078da2828b937`).
 
-`install.sh` tells you whether your file is that one. A different UMS9620 / T760 image is installed too, but it is
+`install.sh` tells you whether your own file is that one. A different UMS9620 / T760 image is installed too, but it is
 **untested**. Do **not** use the Motorola Moto G35 image (`QogirN6Pro_AUDCP_DSP_lit_dm.bin`): it is built for other
 memory addresses and took an F50 down hard enough to fall back to Android.
 
@@ -86,12 +91,14 @@ Without them the DSP runs the call on its built-in defaults (that is how the mea
 2. On your computer, from a clone of this repository:
 
        git clone https://github.com/dikeckaan/mu300-audio && cd mu300-audio
-       ./install.sh --firmware ~/agdsp.img --host root@192.168.77.1
+       ./install.sh --download-firmware --host root@192.168.77.1     # the tested image, sha256-pinned
+       # or your own image:  ./install.sh --firmware ~/agdsp.img --host root@192.168.77.1
        # optional: --params DIR (the XMLs above), --headset AA:BB:CC:DD:EE:FF (a paired headset, see below)
 
    `--host ubuntu@192.168.77.1` for Ubuntu (it uses `sudo`); `--password` if yours is not `ubuntu`. The firmware is
    checked here first (size, `AUDCP` header, sha256), so nothing on the device changes for a wrong file. A later run
-   without `--firmware` keeps the image already installed.
+   without `--firmware` / `--download-firmware` keeps the image already installed. `curl` is needed for the
+   download.
 
 3. Reboot the device, then check:
 
@@ -193,6 +200,7 @@ Reports go to the [mu300-linux issues](https://github.com/dikeckaan/mu300-linux/
 | `kernel/patches/` | the 5.4 audio driver patches |
 | `src/` | sources of `pcmhost`, `ctlset`, `mu300-hfp` (static arm64; `build.sh` in each, needs Docker) |
 | `tools/vbc-profile/` | parameter XML to kernel blob converter |
+| `device/state.sh` | where the device keeps the list of installed files and the backups, and the checks that only a root-only list naming known paths is ever acted on |
 | `tests/` | the installer's local checks: `python3 -m unittest discover tests` |
 
 To rebuild the drivers, use `kernel/build-audio.sh` in mu300-linux: it fetches the same driver sources at a pinned

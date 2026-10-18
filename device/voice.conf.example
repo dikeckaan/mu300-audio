@@ -1,0 +1,9 @@
+# /etc/mu300/voice.conf - read by /opt/mu300/bin/mu300-voice
+#
+# The paired Bluetooth headset calls go to (bluetoothctl: pair, trust; then put its address here).
+# Empty: calls run on the DSP with no physical output (the AP taps: mu300-voice tone / echo).
+BT_HEADSET=
+# bt | dsp | empty (= bt when BT_HEADSET is set and the headset answers, else dsp)
+OUTPUT=
+# voice volume 0-15 (the DSP gets VOLUME + 1, as the vendor HAL does)
+VOLUME=6

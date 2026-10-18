@@ -1,0 +1,11 @@
+# Proprietary files stay out of this repository. Keep your AGDSP image and the vendor
+# parameter XMLs outside it, or under firmware/ or params/, which are ignored.
+firmware/
+params/
+*.img
+*.bin
+*.xml
+# install.sh writes the sha256 of every image it installed here
+local/
+# build leftovers
+*.out

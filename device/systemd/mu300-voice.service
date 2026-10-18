@@ -1,0 +1,13 @@
+[Unit]
+Description=MU300 call audio: follow calls, route them through the audio DSP (and a Bluetooth headset)
+After=mu300-audio.service mu300-atd.service mu300-bluetooth.service
+Requires=mu300-audio.service
+ConditionPathExists=/lib/firmware/agdsp.bin
+
+[Service]
+ExecStart=/opt/mu300/bin/mu300-voice watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

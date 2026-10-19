@@ -5,7 +5,7 @@ the audio of a cellular call goes through the Unisoc audio DSP (AGDSP), to a **B
 own taps on the call (play into it, record from it).
 
 This repository holds the whole call-audio stack, for **every kernel mu300-linux ships** (the vendor 5.4 and the
-mainline 6.18 and 7.2): the drivers (sources, patches, and the build against each kernel's exact build), the call
+mainline 6.18, 7.2 and 7.3): the drivers (sources, patches, and the build against each kernel's exact build), the call
 scripts `mu300-audio-dsp` and `mu300-voice`, the tools `pcmhost`, `ctlset` and `mu300-hfp`, their services, and
 their tests. mu300-linux itself carries none of it since its FINDINGS 194: on the device it is the **audio extra**,
 
@@ -205,6 +205,11 @@ update: the latest release here can come out before that mu300-linux release is 
 later (or one that could not fetch the new extra during its update) still finds a set. The earlier line goes once
 no supported mu300-linux release has that build.
 
+**7.3** (mainline Linux 7.3, mu300-linux's fourth kernel, from the release after v2026.10.19.3 on): its kit is made
+from that mu300-linux release's own 7.3 build tree (`make-kit-mainline.sh 7.3 7.3 TAG`; a mainline release's tree is
+`linux-7.3`, its kernel release `7.3.0`), like the others. 7.3 put the IIO consumer API into a symbol namespace, so
+the headset driver imports `IIO_CONSUMER` there.
+
 **What stays in the kernel** (mu300-linux), because no module can do it: the DSP's memory reserved at boot
 (`CONFIG_OF_RESERVED_MEM_ADD`, mu300-linux's `of-reserved-mem-add` patch for 5.4 and `0022` for mainline: memory has to
 be reserved before the page allocator owns it), and the ALSA/ASoC/dmaengine core options the drivers link against
@@ -215,7 +220,7 @@ be reserved before the page allocator owns it), and the ALSA/ASoC/dmaengine core
 
 Actions > Release > Run workflow on `main`, with the tag (`vMAJOR.MINOR.PATCH`): tests, the tools, the drivers of
 every kernel of `kits.lock`, `tools/make-extra.sh`, and the release with `mu300-audio-5.4.tar.gz`,
-`mu300-audio-6.18.tar.gz`, `mu300-audio-7.2.tar.gz`, `VERSIONS` and `SHA256SUMS`. A tag pushed by hand makes a
+`mu300-audio-6.18.tar.gz`, `mu300-audio-7.2.tar.gz`, `mu300-audio-7.3.tar.gz`, `VERSIONS` and `SHA256SUMS`. A tag pushed by hand makes a
 prerelease of its commit (to test on devices: `MU300_AUDIO_URL=https://github.com/dikeckaan/mu300-audio/releases/download/TAG
 mu300-extra install audio`); `mu300-extra` takes the latest full release.
 

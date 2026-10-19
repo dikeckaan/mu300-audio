@@ -48,7 +48,7 @@ class Release(unittest.TestCase):
 
     def test_one_tarball_per_kernel_of_the_lock(self):
         keys = [k[0] for k in primaries()]
-        self.assertEqual(keys, ['5.4', '6.18', '7.2'])
+        self.assertEqual(keys, ['5.4', '6.18', '7.2', '7.3'])
         names = sorted(p.name for p in self.out.iterdir())
         self.assertEqual(names, sorted([f'mu300-audio-{k}.tar.gz' for k in keys] + ['SHA256SUMS', 'VERSIONS']))
         sums = dict(reversed(l.split('  ')) for l in (self.out / 'SHA256SUMS').read_text().splitlines())

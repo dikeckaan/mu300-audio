@@ -16,7 +16,7 @@
 # Each unpacks into mu300-extra's directory for it ($DISK/extra/audio): files and directories only, owned by root,
 # modes set here (programs and hooks 755, the rest 644), the same bytes from macOS and Linux for the same inputs.
 # Besides its files: VERSION and release (= TAG), name (audio), requires (the mu300-linux release it needs), kernel
-# (the kernel choice it is for: 5.4, 6.18 or 7.2), components, and manifest (the sha256 of every other file).
+# (the kernel choice it is for: 5.4, 6.18, 7.2 or 7.3), components, and manifest (the sha256 of every other file).
 # No firmware: the DSP image is fetched on the device at install time (mu300-extra install audio), checked
 # against its pinned sha256, and never part of a release here.
 set -eu

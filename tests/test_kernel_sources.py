@@ -2,6 +2,7 @@
 nothing of it loaded by udev, the DMA restart that panicked 5.4 (FINDINGS 24e) gone, the hardening of what userspace
 can hand the vendor code, and the module lists of kernel/build.sh, mu300-audio-dsp and the release audit agreeing."""
 import re
+from pathlib import Path
 import unittest
 
 from helpers import TOP
@@ -145,6 +146,52 @@ class ModuleLists(unittest.TestCase):
         patches = sorted(p.stem for p in (TOP / 'kernel' / '5.4' / 'patches').glob('*.patch'))
         self.assertEqual(sorted(order), patches)
         self.assertIn('= %d ]' % len(patches), src)
+
+
+
+class Bounds54(unittest.TestCase):
+    """kernel/5.4/patches/audio-ctl-bounds.patch: the 5.4 drivers get the mainline port's checks on what userspace
+    hands them. Applied here, in order, to a copy of the sources."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        import subprocess
+        import tempfile
+        cls.tmp = tempfile.mkdtemp()
+        cls.src = Path(cls.tmp) / 'a'
+        shutil.copytree(TOP / 'kernel' / '5.4' / 'audio_driver', cls.src)
+        order = re.search(r'for p in ([^;]*); do', (TOP / 'kernel' / '5.4' / 'build-in.sh').read_text()).group(1)
+        for p in order.replace('\\', ' ').split():
+            subprocess.run(['patch', '-p1', '-s', '-f', '-i', str(TOP / 'kernel' / '5.4' / 'patches' / f'{p}.patch')],
+                           cwd=cls.src, check=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp)
+
+    def test_enum_puts_check_the_value_they_use(self):
+        for f in ('sprd/dai/vbc/v4/vbc_dai/vbc-dai.c', 'sprd/codec/sprd/ump9620/codec/sprd-codec.c'):
+            src = (self.src / f).read_text(errors='replace')
+            self.assertNotIn('integer.value[0] >= texts->items', src, f)
+            self.assertIn('enumerated.item[0] >= texts->items', src, f)
+
+    def test_profiles_are_stored_checked(self):
+        dai = (self.src / 'sprd/dai/vbc/v4/vbc_dai/vbc-dai.c').read_text(errors='replace')
+        store = c_function(dai, 'vbc_profile_store')
+        for check in ('size < sizeof(hdr)', 'check_mul_overflow', 'VBC_PROFILE_MAX_BYTES', 'kfree(p_profile_setting->data'):
+            self.assertIn(check, store)
+        for user in ('vbc_turning_profile_loading', 'vbc_profile_loading'):
+            self.assertIn('vbc_profile_store(', c_function(dai, user))
+        self.assertIn('mode_offset >= p_profile_setting->hdr[profile_id].num_mode', dai)
+        self.assertNotIn('vmalloc(data_size)', dai)
+        self.assertNotIn('copy_to_user(data_p, buf_p, data_size)', dai)
+
+    def test_the_same_function_as_mainline(self):
+        dai = (self.src / 'sprd/dai/vbc/v4/vbc_dai/vbc-dai.c').read_text(errors='replace')
+        main = (MOD / 'sprd/dai/vbc/v4/vbc_dai/vbc-dai.c').read_text(errors='replace')
+        self.assertEqual(c_function(dai, 'vbc_profile_store'), c_function(main, 'vbc_profile_store'))
 
 
 if __name__ == '__main__':

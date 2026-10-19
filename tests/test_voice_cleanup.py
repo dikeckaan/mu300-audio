@@ -365,7 +365,7 @@ class StaleReply(unittest.TestCase):
         patched = '\n'.join(l[1:] for l in PATCH54.read_text().splitlines()
                             if l.startswith(('+', ' ')) and not l.startswith('+++'))
         self.assertEqual(recv_cmd(patched + '\n'), recv_cmd(SIPC.read_text()))
-        self.assertIn('audio-fe-dai-formats audio-sipc-stale-reply; do', BUILD_AUDIO.read_text())
+        self.assertIn('audio-fe-dai-formats audio-sipc-stale-reply', BUILD_AUDIO.read_text())
         self.assertNotRegex(PATCH54.read_text(), r'\bSIP\b|[Gg]ateway')
 
     @unittest.skipUnless(shutil.which('cc'), 'needs a C compiler')

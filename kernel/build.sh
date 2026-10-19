@@ -24,7 +24,10 @@ case $KEY in 5.4) IMG=mu300-audio-k54; DF=$TOP/kernel/5.4; KB=/src/zte-u30air ;;
     *) IMG=mu300-audio-mainline; DF=$TOP/kernel/mainline; KB=/src/linux-$KREL ;; esac
 
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
-W=$(mktemp -d); trap 'rm -rf "$W"' EXIT INT TERM
+W=$(mktemp -d)
+# what the build wrote inside Docker is root's on a Linux host: removed from inside Docker as well
+cleanup() { [ ! -d "$W/kit" ] || docker run --rm -v "$W:/w" "$IMG" sh -c 'rm -rf /w/kit /w/out' >/dev/null 2>&1; rm -rf "$W"; }
+trap cleanup EXIT INT TERM
 if [ -n "${KIT_DIR:-}" ]; then
     cp "$KIT_DIR/kit-$KEY.tar.xz" "$W/kit.tar.xz"
 else
@@ -65,7 +68,7 @@ for m in $MODULES; do
 done
 # the patches are in: a string each one adds to a module
 for mark in 'audio_sipc:dropped a stale reply' 'mcdt_hw_r2p0:enabled the agcp mcdt clock' 'snd-soc-sprd-card:dummy_on_defer' \
-        'audio_mem:shm_shift'; do
+        'audio_mem:shm_shift' 'snd-soc-sprd-vbc-v4:rejected (%d)'; do
     LC_ALL=C grep -aq "${mark#*:}" "$W/out/${mark%%:*}.ko" || { echo "${mark%%:*}.ko lacks its patch ('${mark#*:}')" >&2; exit 1; }
 done
 rm -rf "$OUT"; mkdir -p "$OUT"

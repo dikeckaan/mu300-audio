@@ -1,0 +1,17 @@
+[Unit]
+Description=MU300 Unisoc sound card and audio DSP (sprdphone-sc2730)
+# The card needs its drivers, the DMA engine and a hand-written bind; extra-modules has run by then. Put here by the
+# audio extra's hooks/link (mu300-extra install audio, https://github.com/dikeckaan/mu300-audio).
+After=mu300-extra-modules.service
+ConditionPathExists=/opt/mu300/bin/mu300-audio-dsp
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# "start" checks the card is registered before it touches the DSP reset registers: doing that with the AGDSP
+# power domain down reboots the device. Without a firmware image it stops after the card, which is harmless.
+ExecStart=/opt/mu300/bin/mu300-audio-dsp start
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

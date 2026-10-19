@@ -1,0 +1,66 @@
+#!/bin/sh
+# hooks/unlink SYSROOT: undo hooks/link for one system (mu300-extra remove runs it for every installed system). The
+# links, services and files the extra put there are removed and what the system had there itself (NAME.builtin) is
+# put back; a service whose own file does not come back loses its enable link too. The firmware goes only when the
+# extra put it there (SYSROOT/etc/mu300/agdsp.extra names it, and it is still that file). On the running system the
+# call follower is stopped first; drivers already loaded stay until the next boot (most of them cannot be unloaded).
+# Running it again changes nothing. Run as hooks/link is (MU300_DISK, MU300_EXTRA_DIR; MU300_AUDIO_LIVE=1|0).
+set -eu
+R=${1?usage: hooks/unlink SYSROOT   (SYSROOT "" = the running system)}
+R=${R%/}
+LIVE=${MU300_AUDIO_LIVE:-}; [ -n "$LIVE" ] || { [ -n "$R" ] && LIVE=0 || LIVE=1; }
+CMDS="mu300-audio-dsp pcmhost ctlset mu300-hfp mu300-voice"
+
+back() {
+    if [ -e "$1.builtin" ] || [ -L "$1.builtin" ]; then
+        mv "$1.builtin" "$1" && echo "put the system's own ${1#"$R"} back"
+        return 0
+    fi
+    return 1
+}
+drop() {
+    if [ -L "$1" ] || [ -f "$1" ]; then rm -f "$1"; fi
+    back "$1"
+}
+
+# a system whose mu300-audio-dsp is its own (never linked, or unlinked already) is left as it is
+if [ -e "$R/opt/mu300/bin/mu300-audio-dsp" ] && [ ! -L "$R/opt/mu300/bin/mu300-audio-dsp" ]; then exit 0; fi
+[ -L "$R/opt/mu300/bin/mu300-audio-dsp" ] || [ -e "$R/etc/mu300/agdsp.extra" ] || exit 0
+
+if [ "$LIVE" = 1 ]; then
+    if [ -e "$R/etc/openwrt_release" ]; then "$R/etc/init.d/mu300-voice" stop >/dev/null 2>&1 || true
+    elif command -v systemctl >/dev/null 2>&1; then systemctl stop mu300-voice >/dev/null 2>&1 || true; fi
+fi
+
+for c in $CMDS; do
+    if [ -L "$R/opt/mu300/bin/$c" ]; then rm -f "$R/opt/mu300/bin/$c"; fi
+    back "$R/opt/mu300/bin/$c" || true
+done
+drop "$R/etc/modprobe.d/mu300-audio.conf" || true
+drop "$R/etc/mu300/voice.conf.example" || true
+if [ -e "$R/etc/openwrt_release" ]; then
+    for s in mu300-audio mu300-voice; do
+        if ! drop "$R/etc/init.d/$s"; then
+            for l in "$R"/etc/rc.d/[SK]*"$s"; do [ ! -L "$l" ] || rm -f "$l"; done
+        fi
+    done
+else
+    for s in mu300-audio mu300-voice; do
+        if ! drop "$R/etc/systemd/system/$s.service"; then
+            rm -f "$R/etc/systemd/system/multi-user.target.wants/$s.service"
+        fi
+    done
+    if [ "$LIVE" = 1 ] && command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload >/dev/null 2>&1 || true; fi
+fi
+
+# the firmware, when it is the copy the extra put there
+m=$R/etc/mu300/agdsp.extra
+if [ -f "$m" ]; then
+    want=$(head -n1 "$m")
+    if [ -f "$R/lib/firmware/agdsp.bin" ] && [ "$(sha256sum "$R/lib/firmware/agdsp.bin" | cut -d' ' -f1)" = "$want" ]; then
+        rm -f "$R/lib/firmware/agdsp.bin" "$R/etc/mu300/agdsp.sha256"
+        echo "took the DSP firmware the audio extra had put there out of ${R:-this system}"
+    fi
+    rm -f "$m"
+fi
+exit 0

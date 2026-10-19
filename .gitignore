@@ -9,3 +9,5 @@ params/
 local/
 # build leftovers
 *.out
+# build output (kernel/build.sh, src/*/build.sh, tools/make-extra.sh)
+out/

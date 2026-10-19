@@ -1,19 +1,22 @@
 This repository holds work under two licences.
 
 GPL-2.0 (the full text is in kernel/COPYING):
-  kernel/patches/                         patches to Unisoc's audio drivers
-  kernel/modules/5.4.254-gb50db5b6224c/   the 23 drivers built from those sources with those patches
+  kernel/5.4/audio_driver/      Unisoc's GPL-2.0 audio driver sources for the 5.4 kernel, as published in realme's
+                                kernel source release (https://github.com/realme-kernel-opensource/
+                                realme_C51_C53_Narzo-N53-AndroidT-kernel-source, kernel_modules/kernel5.4/audio_driver,
+                                revision 4381465ccaf87fcf3215b9cd42f4a685df40e5e0; kernel/5.4/SOURCE), unchanged
+  kernel/5.4/patches/           patches to them
+  kernel/mainline/sprd_audio/   the same drivers ported to the mainline kernels (from mu300-linux's
+                                upstream/modules/sprd_audio), with the vendor AGCP DMA driver of Enceka/linux-lts-e5
+  the drivers built from them   (modules/ in the release tarballs), and the build kits of the kernels they are built
+                                against (the kits-* releases: Linux's and the vendor kernel's own headers and build files)
 
-  Both derive from Unisoc's GPL-2.0 audio driver sources for the 5.4 kernel, as published in realme's kernel
-  source release (https://github.com/realme-kernel-opensource/realme_C51_C53_Narzo-N53-AndroidT-kernel-source,
-  kernel_modules/kernel5.4/audio_driver, revision 4381465ccaf87fcf3215b9cd42f4a685df40e5e0), built against the
-  vendor 5.4 kernel of mu300-linux. The complete build, with the sources fetched at that revision and these
-  patches applied, is kernel/build-audio.sh in https://github.com/dikeckaan/mu300-linux.
+MIT (below): everything else - install.sh, uninstall.sh, lib/, device/, hooks/, kernel/*.sh and kernel/kits/,
+src/, tools/, tests/, .github/.
 
-MIT (below): everything else - install.sh, uninstall.sh, device/, src/, tools/, tests/.
-
-Not covered by either, and not in this repository: the AGDSP firmware and the vendor parameter files, which
-belong to Unisoc / ZTE and which every user supplies from their own device.
+Not covered by either, and not in this repository or any of its releases: the AGDSP firmware and the vendor
+parameter files, which belong to Unisoc / ZTE. The firmware is fetched on the device at install time (from
+github.com/dikeckaan/mu300-audio-firmware, used only with its pinned sha256), or you supply your own.
 
 MIT License
 

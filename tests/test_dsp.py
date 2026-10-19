@@ -67,6 +67,21 @@ class Drivers(unittest.TestCase):
             r = self.run_dsp(shell, 'drivers', MU300_KCONFIG=str(self.tmp / 'none.gz'))
             self.assertEqual(r.returncode, 1)
 
+    def test_an_earlier_build_beside_it(self):
+        # the kernel before a mu300-linux release changed its configuration: modules/<release>+<12 digits of CONFIG>/
+        self.put_set(config='0' * 64)
+        d = self.put_set(krel='6.18.57+' + config_sum(CONFIG)[:12])
+        (d / 'KERNEL').write_text(f'KEY=6.18\nKREL=6.18.57\nCONFIG={config_sum(CONFIG)}\nTAG=v2026.10.19.1\n')
+        for shell in shells():
+            r = self.run_dsp(shell, 'drivers')
+            self.assertEqual((r.returncode, r.stdout.strip()), (0, str(d)), r.stderr)
+        # neither fits: both builds named
+        (d / 'KERNEL').write_text(f'KEY=6.18\nKREL=6.18.57\nCONFIG={"1" * 64}\nTAG=v2026.10.18.1\n')
+        for shell in shells():
+            r = self.run_dsp(shell, 'drivers')
+            self.assertEqual(r.returncode, 1)
+            self.assertIn('(mu300-linux v2026.10.19.1, mu300-linux v2026.10.18.1)', r.stderr)
+
     def test_a_set_for_another_kernel(self):
         self.put_set(krel='7.2.11')
         for shell in shells():

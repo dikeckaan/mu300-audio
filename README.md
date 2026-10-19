@@ -197,6 +197,14 @@ On the device, `mu300-audio-dsp` loads a set only when its `KERNEL` file names t
 configuration (the sha256 of `/proc/config.gz`'s settings): a mu300-linux release that changes a kernel's
 configuration needs a new release here, built against its kits.
 
+Such a release keeps the earlier build too. `kits.lock` may hold more than one line for a kernel: the build of the
+newest mu300-linux release first, then the build before it. `kernel/build.sh KEY` builds them all, and the tarball carries the
+earlier set beside the current one, as `modules/<release>+<the first 12 digits of its CONFIG>/`. `mu300-audio-dsp`
+loads whichever set fits the running kernel. One tarball then works on a device before and after its mu300-linux
+update: the latest release here can come out before that mu300-linux release is promoted, and a device updated
+later (or one that could not fetch the new extra during its update) still finds a set. The earlier line goes once
+no supported mu300-linux release has that build.
+
 **What stays in the kernel** (mu300-linux), because no module can do it: the DSP's memory reserved at boot
 (`CONFIG_OF_RESERVED_MEM_ADD`, mu300-linux's `of-reserved-mem-add` patch for 5.4 and `0022` for mainline: memory has to
 be reserved before the page allocator owns it), and the ALSA/ASoC/dmaengine core options the drivers link against

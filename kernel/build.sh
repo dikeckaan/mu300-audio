@@ -9,13 +9,27 @@
 # natively on arm64 (an Apple Silicon Mac, GitHub's ubuntu-24.04-arm): the kit's host programs are arm64 ones.
 # Afterwards every module must be there (MODULES in this file), carry the kernel's vermagic, and be built from the
 # patched sources (a marker each patch leaves). OUTDIR gets the .ko files and KERNEL (KEY, KREL, CONFIG).
+# A KEY with more than one line in kits.lock (the kernel of the current mu300-linux release first, then earlier builds
+# of it kept for the devices that have not updated yet): the first line's set goes to OUTDIR, each later one's to
+# OUTDIR+<the first 12 digits of its CONFIG> (tools/make-extra.sh puts them side by side in the tarball).
 set -eu
 KEY=${1:?usage: kernel/build.sh 5.4|6.18|7.2 [OUTDIR]}
 TOP=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${2:-$TOP/out/modules/$KEY}
 REPO=${MU300_AUDIO_REPO:-dikeckaan/mu300-audio}
-line=$(awk -v k="$KEY" '$1 == k' "$TOP/kernel/kits/kits.lock")
-[ -n "$line" ] || { echo "no kernel $KEY in kernel/kits/kits.lock" >&2; exit 2; }
+n=$(awk -v k="$KEY" '$1 == k' "$TOP/kernel/kits/kits.lock" | wc -l | tr -d ' ')
+[ "$n" -gt 0 ] || { echo "no kernel $KEY in kernel/kits/kits.lock" >&2; exit 2; }
+if [ -z "${MU300_KIT_LINE:-}" ]; then
+    i=1
+    while [ "$i" -le "$n" ]; do
+        o=$OUT
+        [ "$i" = 1 ] || o=$OUT+$(awk -v k="$KEY" -v i="$i" '$1 == k && ++c == i {print substr($3, 1, 12)}' "$TOP/kernel/kits/kits.lock")
+        MU300_KIT_LINE=$i sh "$0" "$KEY" "$o" || exit $?
+        i=$((i + 1))
+    done
+    exit 0
+fi
+line=$(awk -v k="$KEY" -v i="$MU300_KIT_LINE" '$1 == k && ++c == i' "$TOP/kernel/kits/kits.lock")
 set -- $line
 KREL=$2 CONFIG=$3 KITSHA=$4 TAG=$5
 # the kit goes where the release's kernel source was (the headers' paths end up in __FILE__ strings, and the same path
@@ -28,7 +42,8 @@ W=$(mktemp -d)
 # what the build wrote inside Docker is root's on a Linux host: removed from inside Docker as well
 cleanup() { [ ! -d "$W/kit" ] || docker run --rm -v "$W:/w" "$IMG" sh -c 'rm -rf /w/kit /w/out' >/dev/null 2>&1; rm -rf "$W"; }
 trap cleanup EXIT INT TERM
-if [ -n "${KIT_DIR:-}" ]; then
+# (a kit in KIT_DIR that is not this line's - another build of the same kernel - is not taken: downloaded instead)
+if [ -n "${KIT_DIR:-}" ] && [ -f "$KIT_DIR/kit-$KEY.tar.xz" ] && [ "$(sha "$KIT_DIR/kit-$KEY.tar.xz")" = "$KITSHA" ]; then
     cp "$KIT_DIR/kit-$KEY.tar.xz" "$W/kit.tar.xz"
 else
     url=https://github.com/$REPO/releases/download/kits-$TAG/kit-$KEY.tar.xz

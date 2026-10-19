@@ -59,7 +59,8 @@ jobs:
       - name: Tools
         run: for t in pcmhost ctlset hfp; do sh "src/$t/build.sh"; done
       - name: Drivers
-        run: for k in $(awk '!/^#/ && NF {print $1}' kernel/kits/kits.lock); do sh kernel/build.sh "$k"; done
+        # (each kernel once: kernel/build.sh builds all its lines, the earlier builds beside the current one)
+        run: for k in $(awk '!/^#/ && NF && !seen[$1]++ {print $1}' kernel/kits/kits.lock); do sh kernel/build.sh "$k"; done
       - name: Build
         run: |
           sh tools/make-extra.sh out/release "$TAG"
@@ -73,7 +74,7 @@ jobs:
             echo
             echo '| file | kernel | built against |'
             echo '|---|---|---|'
-            awk '!/^#/ && NF {printf "| mu300-audio-%s.tar.gz | %s | the %s kernel of mu300-linux %s (kit sha256 %s...) |\n", $1, $2, $1, $5, substr($4, 1, 12)}' kernel/kits/kits.lock
+            awk '!/^#/ && NF {printf "| mu300-audio-%s.tar.gz | %s | %sthe %s kernel of mu300-linux %s (config %s..., kit sha256 %s...) |\n", $1, $2, (seen[$1]++ ? "also, for the devices not updated yet: " : ""), $1, $5, substr($3, 1, 12), substr($4, 1, 12)}' kernel/kits/kits.lock
             echo "| VERSIONS | each tarball's version, size and kernel release | |"
             echo
             echo 'Licences: the drivers (modules/) are GPL-2.0, built from Unisoc'"'"'s audio drivers as published by realme (5.4) and the mainline port of them (kernel/); the scripts and tools are MIT. No firmware: the DSP image is not part of any release here.'

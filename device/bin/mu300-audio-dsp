@@ -45,7 +45,9 @@ KREL=${MU300_KREL:-$(uname -r)}
 # this very kernel build - KERNEL there names the sha256 of the configuration it was built against, and the running
 # kernel's own (/proc/config.gz) must be the same: a driver built against another configuration of the same release
 # would load (vermagic says nothing about the configuration, and mainline has no modversions) and then read the
-# kernel's structures at the wrong offsets. Without such a set, the places the releases up to v2026.10.19.1 kept
+# kernel's structures at the wrong offsets. An extra can carry earlier builds of the same release beside it,
+# modules/<release>+<first 12 digits of their CONFIG>/ (the kernel before a mu300-linux release changed its
+# configuration): the one that fits is taken. Without such a set, the places the releases up to v2026.10.19.1 kept
 # them: .../audio (mu300-audio's 5.4 installer), extra/ (mainline, Ubuntu) or flat (mainline, OpenWrt).
 EXTRA_DIR=${MU300_AUDIO_DIR:-$(dirname "$HERE")}
 K=${MU300_LIB_MODULES:-/lib/modules/$KREL}
@@ -64,8 +66,9 @@ set_fits() {
 }
 # audio_dir: the directory the drivers are loaded from; else 1, and why_none says why
 audio_dir() {
-    _s=$EXTRA_DIR/modules/$KREL
-    if [ -f "$_s/sprd_audcp_boot.ko" ] && set_fits "$_s"; then echo "$_s"; return 0; fi
+    for _s in "$EXTRA_DIR/modules/$KREL" "$EXTRA_DIR/modules/$KREL"+*; do
+        if [ -f "$_s/sprd_audcp_boot.ko" ] && set_fits "$_s"; then echo "$_s"; return 0; fi
+    done
     for d in "$K/audio" "$K/extra" "$K"; do
         [ -f "$d/sprd_audcp_boot.ko" ] && { echo "$d"; return 0; }
     done
@@ -74,7 +77,8 @@ audio_dir() {
 why_none() {
     _s=$EXTRA_DIR/modules/$KREL
     if [ -f "$_s/sprd_audcp_boot.ko" ]; then
-        echo "the audio extra's drivers for $KREL were built for another build of it ($(sed -n 's/^TAG=/mu300-linux /p' "$_s/KERNEL" 2>/dev/null)): not loaded. Update the extra (mu300-extra install audio); MU300_AUDIO_ANY_BUILD=1 takes them anyway"
+        _t=$(for _d in "$_s" "$_s"+*; do [ ! -f "$_d/KERNEL" ] || sed -n 's/^TAG=/mu300-linux /p' "$_d/KERNEL"; done | sed -n '1h;1!H;${x;s/\n/, /g;p;}')
+        echo "the audio extra's drivers for $KREL were built for another build of it ($_t): not loaded. Update the extra (mu300-extra install audio); MU300_AUDIO_ANY_BUILD=1 takes them anyway"
     elif ls -d "$EXTRA_DIR"/modules/* >/dev/null 2>&1; then
         echo "the audio extra has drivers for $(cd "$EXTRA_DIR/modules" && ls | tr '\n' ' ')and this is $KREL: mu300-extra install audio brings this kernel's"
     else

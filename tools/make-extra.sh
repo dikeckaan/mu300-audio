@@ -4,7 +4,11 @@
 #   OUTDIR/mu300-audio-5.4.tar.gz    the audio extra for each kernel of kernel/kits/kits.lock: the call-audio stack with
 #   OUTDIR/mu300-audio-6.18.tar.gz   that kernel's drivers (modules/<release>/, built by kernel/build.sh against the
 #   OUTDIR/mu300-audio-7.2.tar.gz    kernel's own build); mu300-extra installs the one of the kernel the device uses,
-#                                    and mu300-update takes the other one when the kernel changes
+#                                    and mu300-update takes the other one when the kernel changes. A kernel with
+#                                    more than one line in kits.lock carries the sets of the earlier builds as well,
+#                                    modules/<release>+<first 12 digits of CONFIG>/ (out/modules/KEY+<those>/): the
+#                                    extra then runs on that kernel before and after the mu300-linux release that
+#                                    changed its configuration, and mu300-audio-dsp loads the set whose CONFIG fits
 #   OUTDIR/VERSIONS                  extra, version, bytes, kernel release, asset - TSV
 #   OUTDIR/SHA256SUMS                all of the above, in sha256sum's format
 # Inputs: out/modules/KEY/ (kernel/build.sh KEY) and out/bin/{pcmhost,ctlset,mu300-hfp} (src/*/build.sh, static
@@ -20,19 +24,20 @@ OUT=${1:?usage: tools/make-extra.sh OUTDIR [TAG]}
 TAG=${2:-v0.0.0-dev}
 case $TAG in v[0-9]*) ;; *) echo "TAG is vMAJOR.MINOR.PATCH" >&2; exit 2 ;; esac
 TOP=$(cd "$(dirname "$0")/.." && pwd)
-# the first mu300-linux release whose kernels these drivers are built for: the kits' own (kits.lock), the same for all
-REQUIRES="mu300-linux $(awk '!/^#/ && NF {print $5; exit}' "$TOP/kernel/kits/kits.lock")"
+# the first mu300-linux release whose kernels these drivers are built for: the oldest of the kits' own (kits.lock)
+REQUIRES="mu300-linux $(awk '!/^#/ && NF {print $5}' "$TOP/kernel/kits/kits.lock" | sed 's/^v//' |
+    LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | head -1 | sed 's/^/v/')"
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 FAKE=${MU300_AUDIO_FAKE:-}
-KEYS=$(awk '!/^#/ && NF {print $1}' "$TOP/kernel/kits/kits.lock")
+KEYS=$(awk '!/^#/ && NF && !seen[$1]++ {print $1}' "$TOP/kernel/kits/kits.lock")
 
 for KEY in $KEYS; do
-    set -- $(awk -v k="$KEY" '$1 == k' "$TOP/kernel/kits/kits.lock")
+    set -- $(awk -v k="$KEY" '$1 == k {print; exit}' "$TOP/kernel/kits/kits.lock")
     KREL=$2 CONFIG=$3 KTAG=$5
     d=$tmp/$KEY
-    mkdir -p "$d/bin" "$d/modules/$KREL" "$d/service/systemd" "$d/service/procd" "$d/etc" "$d/hooks" "$d/licence"
+    mkdir -p "$d/bin" "$d/service/systemd" "$d/service/procd" "$d/etc" "$d/hooks" "$d/licence"
     cp "$TOP/device/bin/mu300-audio-dsp" "$TOP/device/bin/mu300-voice" "$d/bin/"
     cp "$TOP/device/service/systemd/mu300-audio.service" "$TOP/device/service/systemd/mu300-voice.service" "$d/service/systemd/"
     cp "$TOP/device/service/procd/mu300-audio" "$TOP/device/service/procd/mu300-voice" "$d/service/procd/"
@@ -41,23 +46,36 @@ for KEY in $KEYS; do
     cp "$TOP/LICENSE" "$d/licence/LICENSE"; cp "$TOP/kernel/COPYING" "$d/licence/COPYING"
     if [ "$FAKE" = 1 ]; then
         for b in pcmhost ctlset mu300-hfp; do printf '#!/bin/sh\necho "%s (fake for tests)"\n' "$b" > "$d/bin/$b"; done
-        for m in audio_mem agdsp_access audio_sipc sprd_audcp_boot snd-soc-sprd-card; do
-            printf 'vermagic=%s SMP\n' "$KREL" > "$d/modules/$KREL/$m.ko"
-        done
-        printf 'KEY=%s\nKREL=%s\nCONFIG=%s\nTAG=%s\n' "$KEY" "$KREL" "$CONFIG" "$KTAG" > "$d/modules/$KREL/KERNEL"
     else
         for b in pcmhost ctlset mu300-hfp; do
             [ -s "$TOP/out/bin/$b" ] || { echo "no out/bin/$b (src/*/build.sh)" >&2; exit 1; }
             cp "$TOP/out/bin/$b" "$d/bin/"
         done
-        m=$TOP/out/modules/$KEY
-        grep -qx "KREL=$KREL" "$m/KERNEL" 2>/dev/null && grep -qx "CONFIG=$CONFIG" "$m/KERNEL" ||
-            { echo "out/modules/$KEY is not the kernel kits.lock names (kernel/build.sh $KEY)" >&2; exit 1; }
-        cp "$m"/*.ko "$m/KERNEL" "$d/modules/$KREL/"
     fi
+    printf 'mu300-audio %s\n' "$TAG" > "$d/components"
+    # every line of this kernel: the first one's set in modules/<release>/, an earlier build's beside it
+    i=0
+    awk -v k="$KEY" '$1 == k' "$TOP/kernel/kits/kits.lock" > "$tmp/lines"
+    while read -r _ LREL LCONFIG _ LTAG; do
+        i=$((i + 1))
+        sub=$LREL src=$TOP/out/modules/$KEY
+        [ "$i" = 1 ] || { sub=$LREL+$(printf %.12s "$LCONFIG"); src=$src+$(printf %.12s "$LCONFIG"); }
+        mkdir -p "$d/modules/$sub"
+        if [ "$FAKE" = 1 ]; then
+            for m in audio_mem agdsp_access audio_sipc sprd_audcp_boot snd-soc-sprd-card; do
+                printf 'vermagic=%s SMP\n' "$LREL" > "$d/modules/$sub/$m.ko"
+            done
+            printf 'KEY=%s\nKREL=%s\nCONFIG=%s\nTAG=%s\n' "$KEY" "$LREL" "$LCONFIG" "$LTAG" > "$d/modules/$sub/KERNEL"
+        else
+            grep -qx "KREL=$LREL" "$src/KERNEL" 2>/dev/null && grep -qx "CONFIG=$LCONFIG" "$src/KERNEL" ||
+                { echo "${src#"$TOP"/} is not the kernel kits.lock names (kernel/build.sh $KEY)" >&2; exit 1; }
+            cp "$src"/*.ko "$src/KERNEL" "$d/modules/$sub/"
+        fi
+        printf 'kernel %s (%s, mu300-linux %s)\n' "$KEY" "$LREL" "$LTAG" >> "$d/components"
+    done < "$tmp/lines"
+    rm -f "$tmp/lines"
     echo "$TAG" > "$d/VERSION"; echo "$TAG" > "$d/release"; echo audio > "$d/name"; echo "$REQUIRES" > "$d/requires"
     echo "$KEY" > "$d/kernel"
-    printf 'mu300-audio %s\nkernel %s (%s, mu300-linux %s)\n' "$TAG" "$KEY" "$KREL" "$KTAG" > "$d/components"
 done
 
 # python's tarfile, not tar: the same root-owned archive from macOS (bsdtar) and Linux (GNU tar), sorted, with fixed
@@ -108,7 +126,7 @@ PY
 ( cd "$OUT"
   for KEY in $KEYS; do
       f=mu300-audio-$KEY.tar.gz
-      printf 'audio\t%s\t%s\t%s\t%s\n' "$TAG" "$(wc -c < "$f" | tr -d ' ')" "$(awk -v k="$KEY" '$1 == k {print $2}' "$TOP/kernel/kits/kits.lock")" "$f"
+      printf 'audio\t%s\t%s\t%s\t%s\n' "$TAG" "$(wc -c < "$f" | tr -d ' ')" "$(awk -v k="$KEY" '$1 == k {print $2; exit}' "$TOP/kernel/kits/kits.lock")" "$f"
   done > VERSIONS
   for f in $(for KEY in $KEYS; do echo "mu300-audio-$KEY.tar.gz"; done) VERSIONS; do
       s=$(shasum -a 256 "$f" 2>/dev/null || sha256sum "$f"); printf '%s  %s\n' "${s%% *}" "$f"

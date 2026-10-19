@@ -7,5 +7,7 @@
 # that have not updated yet: mu300-audio-dsp loads the set that fits).
 # KEY  KREL                   CONFIG                                                            KIT                                                               MU300-LINUX
 5.4    5.4.254-gb50db5b6224c  3fc08f973d75d346366d3e7d816be4fa0972e94a5e0c29679c2ca41ce004c122  447b4a6ef5fbc21b8574f2f86cc847fcf4db0521a726f313559503c0405b2efb  v2026.10.19.1
+6.18   6.18.57                21dc3b74b83884898d153ab6785222210605ccce052a9fcb9d1c532141c5a6be  0032b19b742fda2ba9f226fd942bf2cb3228d07c365339af12ca4c218501f14b  v2026.10.19.3
 6.18   6.18.57                56c95ca5652d6593fa212496472559d8288f89f4505d01c679177e008ae95563  22188ff60ed3fb5ecc539dd3dd5c630f0ffea451ec7ff0da9bd61a476608b8f1  v2026.10.19.1
+7.2    7.2.11                 167a7257b0bcd350643669b3d4dca1f571b0df02170fca96b3decc3f2c6010e8  18543ae17fd94ec5177f5fb36e81e72951cc66c679215ec4f4ee54e43f132dfd  v2026.10.19.3
 7.2    7.2.11                 9821bdd10df180f8dde819bbeeb34bc9926b7268e02e1da8fcff51606bf71844  569316a2f5c481f8e11545eef3343ecc69a94003de032d39158646a6c9c10795  v2026.10.19.1

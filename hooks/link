@@ -1,0 +1,133 @@
+#!/bin/sh
+# hooks/link SYSROOT: make one system use the audio extra ($DISK/extra/audio). mu300-extra runs it after an install
+# for every installed system and at every boot for the running one; mu300-update runs it for the new systems before
+# the reboot, and after a kernel switch. SYSROOT "" is the running system, else the root of another one
+# ($DISK/ubuntu, ...).
+#   SYSROOT/opt/mu300/bin/{mu300-audio-dsp,mu300-voice,pcmhost,ctlset,mu300-hfp} -> the extra's bin/
+#   the services: Ubuntu (systemd) SYSROOT/etc/systemd/system/mu300-audio.service and mu300-voice.service;
+#   OpenWrt (SYSROOT/etc/openwrt_release) SYSROOT/etc/init.d/mu300-audio and mu300-voice. Enabled (multi-user.target.wants,
+#   /etc/rc.d) when the system is linked the first time: mu300-audio always; mu300-voice, the call follower, only when
+#   the system had no mu300-voice service of its own - one it had keeps whether it was enabled (something else may
+#   follow the calls there). Later links leave the enable links as they are (yours to change).
+#   SYSROOT/etc/modprobe.d/mu300-audio.conf (modprobe never loads the stack: mu300-audio-dsp does, with parameters)
+#   SYSROOT/etc/mu300/voice.conf.example
+#   SYSROOT/lib/firmware/agdsp.bin, when the system has none and the extra fetched the firmware
+#   ($DISK/extra/.audio-firmware/agdsp.bin, checked against its pinned sha256 when it was fetched): with
+#   SYSROOT/etc/mu300/agdsp.sha256 as mu300-audio-dsp install writes it, and SYSROOT/etc/mu300/agdsp.extra, which says
+#   the extra put it there (hooks/unlink takes only such a copy away again). A firmware of the system's own is never
+#   touched.
+# What a system has there itself (the audio stack of a release up to v2026.10.19.1, or what mu300-audio's old
+# installer put there) is moved aside to NAME.builtin, never deleted; hooks/unlink puts it back. Running it again
+# changes nothing. On the running system (SYSROOT ""), when something changed, systemd is reloaded, the sound card and
+# the DSP are started when they are not up yet, and the call follower is (re)started. Run as
+# MU300_DISK=DISK MU300_EXTRA_DIR=DISK/extra/audio sh hooks/link SYSROOT (MU300_AUDIO_LIVE=1|0: those service calls or
+# not, by default for SYSROOT "" only - tests/).
+set -eu
+R=${1?usage: hooks/link SYSROOT   (SYSROOT "" = the running system)}
+R=${R%/}
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+DISK=${MU300_DISK:-/mnt/mu300-disk}
+EXTRA=${MU300_EXTRA_DIR:-$DISK/extra/audio}
+FWC=${MU300_AUDIO_FW_CACHE:-$DISK/extra/.audio-firmware/agdsp.bin}
+LIVE=${MU300_AUDIO_LIVE:-}; [ -n "$LIVE" ] || { [ -n "$R" ] && LIVE=0 || LIVE=1; }
+CMDS="pcmhost ctlset mu300-hfp mu300-voice mu300-audio-dsp"
+
+[ -x "$HERE/bin/mu300-audio-dsp" ] && [ -x "$HERE/bin/mu300-voice" ] || { echo "hooks/link: $HERE is not the audio extra" >&2; exit 1; }
+
+changed= fw_new=
+# aside PATH: a file or directory there that is not a link moves to PATH.builtin (PATH.builtin.N when that is taken)
+aside() {
+    [ -e "$1" ] && [ ! -L "$1" ] || return 0
+    _to=$1.builtin; _n=1
+    while [ -e "$_to" ] || [ -L "$_to" ]; do _to=$1.builtin.$_n; _n=$((_n + 1)); done
+    mv "$1" "$_to"
+    echo "kept the system's own ${1#"$R"} as ${_to#"$R"}"
+}
+# put SRC DST MODE: SRC copied to DST. Before the system is linked the first time, a different file at DST is the
+# system's own and moves aside; afterwards it is this extra's earlier copy and is replaced.
+put() {
+    if [ -e "$2" ] && [ ! -L "$2" ] && cmp -s "$1" "$2"; then chmod "$3" "$2"; return 0; fi
+    if [ -n "$first" ] && [ -e "$2" ]; then aside "$2"; fi
+    [ ! -L "$2" ] || rm -f "$2"
+    cp "$1" "$2.new.$$" && chmod "$3" "$2.new.$$" && mv -f "$2.new.$$" "$2" || { rm -f "$2.new.$$"; return 1; }
+    changed=1
+}
+# link TARGET PATH: PATH a symlink to TARGET, the system's own file there moved aside first
+link() {
+    [ "$(readlink "$2" 2>/dev/null)" = "$1" ] && return 0
+    aside "$2"
+    ln -sfn "$1" "$2"
+    changed=1
+}
+# enable LINK TARGET: a service's enable link, made when it is not there
+enable() {
+    [ -L "$1" ] && return 0
+    mkdir -p "${1%/*}"; ln -sfn "$2" "$1"; changed=1
+}
+
+# first: this system has not been linked yet, so what is there is its own
+first=; [ -L "$R/opt/mu300/bin/mu300-audio-dsp" ] || first=1
+mkdir -p "$R/opt/mu300/bin" "$R/etc/mu300" "$R/etc/modprobe.d"
+# a call follower of the system's own (a release's, or mu300-audio's old installer's): its enabled state is kept
+own_voice=
+[ -e "$R/etc/init.d/mu300-voice" ] || [ -e "$R/etc/systemd/system/mu300-voice.service" ] || [ -L "$R/opt/mu300/bin/mu300-audio-dsp" ] || own_voice=none
+
+put "$HERE/etc/modprobe-mu300-audio.conf" "$R/etc/modprobe.d/mu300-audio.conf" 644
+put "$HERE/etc/voice.conf.example" "$R/etc/mu300/voice.conf.example" 644
+if [ -e "$R/etc/openwrt_release" ]; then
+    mkdir -p "$R/etc/init.d" "$R/etc/rc.d"
+    for s in mu300-audio mu300-voice; do
+        put "$HERE/service/procd/$s" "$R/etc/init.d/$s" 755
+        # what /etc/init.d/NAME enable makes: S<START>name -> ../init.d/name
+        start=$(sed -n 's/^START=\([0-9][0-9]*\)$/\1/p' "$HERE/service/procd/$s" | head -n1)
+        if [ -n "$first" ] && { [ "$s" = mu300-audio ] || [ "$own_voice" = none ]; }; then
+            ls "$R"/etc/rc.d/S*"$s" >/dev/null 2>&1 || enable "$R/etc/rc.d/S$start$s" "../init.d/$s"
+        fi
+    done
+else
+    mkdir -p "$R/etc/systemd/system"
+    for s in mu300-audio mu300-voice; do
+        put "$HERE/service/systemd/$s.service" "$R/etc/systemd/system/$s.service" 644
+        if [ -n "$first" ] && { [ "$s" = mu300-audio ] || [ "$own_voice" = none ]; }; then
+            enable "$R/etc/systemd/system/multi-user.target.wants/$s.service" "/etc/systemd/system/$s.service"
+        fi
+    done
+fi
+
+# the firmware the extra fetched, into a system that has none
+if [ -f "$FWC" ] && [ ! -e "$R/lib/firmware/agdsp.bin" ] && [ ! -L "$R/lib/firmware/agdsp.bin" ]; then
+    sum=$(sha256sum "$FWC" | cut -d' ' -f1)
+    mkdir -p "$R/lib/firmware"
+    cp "$FWC" "$R/lib/firmware/agdsp.bin.new.$$" && chmod 644 "$R/lib/firmware/agdsp.bin.new.$$" &&
+        mv -f "$R/lib/firmware/agdsp.bin.new.$$" "$R/lib/firmware/agdsp.bin" || { rm -f "$R/lib/firmware/agdsp.bin.new.$$"; exit 1; }
+    echo "$sum  agdsp.bin" > "$R/etc/mu300/agdsp.sha256"
+    echo "$sum" > "$R/etc/mu300/agdsp.extra"
+    echo "put the DSP firmware into ${R:-this system} (/lib/firmware/agdsp.bin, sha256 $sum)"
+    changed=1 fw_new=1
+fi
+
+# the commands last, mu300-audio-dsp the very last: its link is what says this system is linked (first above)
+for c in $CMDS; do link "$EXTRA/bin/$c" "$R/opt/mu300/bin/$c"; done
+
+# the running system: the card and the DSP are started when the card is not up yet, or the DSP has just got its
+# firmware (a DSP that runs already is left alone: a call may be on), and the call follower is (re)started
+if [ "$LIVE" = 1 ] && [ -n "$changed" ]; then
+    start=; grep -q sprdphone /proc/asound/cards 2>/dev/null || start=1
+    [ -z "$fw_new" ] || start=1
+    if [ -e "$R/etc/openwrt_release" ]; then
+        # boot: in the background, as at boot
+        [ -z "$start" ] || "$R/etc/init.d/mu300-audio" boot >/dev/null 2>&1 || echo "could not start mu300-audio" >&2
+        # the call follower only where it is enabled
+        if ls "$R"/etc/rc.d/S*mu300-voice >/dev/null 2>&1; then
+            "$R/etc/init.d/mu300-voice" restart >/dev/null 2>&1 || "$R/etc/init.d/mu300-voice" start >/dev/null 2>&1 || true
+        fi
+    elif command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        # --no-block: binding the card takes half a minute, and at boot this runs from a unit the start may follow
+        [ -z "$start" ] || systemctl --no-block restart mu300-audio >/dev/null 2>&1 || echo "could not start mu300-audio" >&2
+        if [ -L "$R/etc/systemd/system/multi-user.target.wants/mu300-voice.service" ]; then
+            systemctl --no-block restart mu300-voice >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+exit 0

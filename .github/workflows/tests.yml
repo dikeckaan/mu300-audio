@@ -1,0 +1,38 @@
+name: Tests
+
+# tests/: the call scripts, the hooks, the release tarballs and the driver sources, under every shell the device scripts
+# run with (dash and bash on Ubuntu, busybox ash on OpenWrt). Locally: cd tests && python3 -m unittest discover -s .
+# build: the drivers of every kernel of kernel/kits/kits.lock, against its build kit (kernel/build.sh), and the tools.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shells
+        run: sudo apt-get install -y -qq dash busybox >/dev/null
+      - name: tests
+        run: cd tests && python3 -m unittest discover -s . -v
+
+  build:
+    # native arm64: the kits' host programs (modpost, fixdep) are arm64 builds, as the kernels were built
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ['5.4', '6.18', '7.2']
+    steps:
+      - uses: actions/checkout@v4
+      - name: drivers for ${{ matrix.kernel }}
+        run: sh kernel/build.sh "${{ matrix.kernel }}"
+      - name: what was built
+        run: |
+          cat "out/modules/${{ matrix.kernel }}/KERNEL"
+          ls -la "out/modules/${{ matrix.kernel }}"

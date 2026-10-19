@@ -1,0 +1,83 @@
+name: Release
+
+# Builds the audio extra - for every kernel of kernel/kits/kits.lock its drivers (kernel/build.sh, against that kernel's
+# build kit, checked by hash), the static tools (src/*/build.sh) and tools/make-extra.sh - and publishes the release
+# files under fixed names, so releases/latest/download/NAME always works for mu300-extra: mu300-audio-5.4.tar.gz,
+# mu300-audio-6.18.tar.gz, mu300-audio-7.2.tar.gz, VERSIONS and SHA256SUMS. No firmware: mu300-extra fetches that on the
+# device. Actions > Release > Run workflow on main, with the tag (vMAJOR.MINOR.PATCH): the release's commit is the main
+# commit the workflow ran on (another ref is refused), and a tag or release that exists already is refused. A tag
+# vMAJOR.MINOR.PATCH pushed by hand (from any branch: to try a build on devices before it is merged) makes a
+# prerelease of the tagged commit, which mu300-extra does not take (releases/latest is the latest full release).
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.0.0'
+        required: true
+      prerelease:
+        description: 'Publish as a prerelease (mu300-extra takes the latest full release)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    permissions:
+      contents: write   # the release and its assets
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      PRERELEASE: ${{ github.event_name == 'push' && 'true' || inputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Tag and ref
+        run: |
+          printf '%s\n' "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || { echo "not a release tag (vMAJOR.MINOR.PATCH): $TAG"; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+              [ "$GITHUB_REF_NAME" = main ] || { echo "releases come from main, not $GITHUB_REF_NAME"; exit 1; }
+          fi
+          echo "release $TAG from $GITHUB_REF_NAME@$GITHUB_SHA (prerelease: $PRERELEASE)"
+      - uses: actions/checkout@v4
+      - name: Not yet released
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "release $TAG exists"; exit 1; fi
+          # (a pushed tag is there already: it is what this run releases)
+          [ "$GITHUB_EVENT_NAME" = push ] || [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ] || { echo "tag $TAG exists"; exit 1; }
+      - name: Tests
+        run: |
+          sudo apt-get install -y -qq dash busybox >/dev/null
+          cd tests && python3 -m unittest discover -s .
+      - name: Tools
+        run: for t in pcmhost ctlset hfp; do sh "src/$t/build.sh"; done
+      - name: Drivers
+        run: for k in $(awk '!/^#/ && NF {print $1}' kernel/kits/kits.lock); do sh kernel/build.sh "$k"; done
+      - name: Build
+        run: |
+          sh tools/make-extra.sh out/release "$TAG"
+          cat out/release/SHA256SUMS
+      - name: Publish
+        run: |
+          {
+            echo "Call audio for [mu300-linux](https://github.com/dikeckaan/mu300-linux) as the audio extra"
+            echo
+            echo "Install on the device: \`sudo mu300-extra install audio\` (needs $(tar -xzOf out/release/mu300-audio-6.18.tar.gz ./requires) or newer). It takes the tarball of the kernel the device uses and fetches the DSP firmware, checked against its pinned sha256; \`mu300-update kernel X\` brings the one of X. Offline: see the README."
+            echo
+            echo '| file | kernel | built against |'
+            echo '|---|---|---|'
+            awk '!/^#/ && NF {printf "| mu300-audio-%s.tar.gz | %s | the %s kernel of mu300-linux %s (kit sha256 %s...) |\n", $1, $2, $1, $5, substr($4, 1, 12)}' kernel/kits/kits.lock
+            echo "| VERSIONS | each tarball's version, size and kernel release | |"
+            echo
+            echo 'Licences: the drivers (modules/) are GPL-2.0, built from Unisoc'"'"'s audio drivers as published by realme (5.4) and the mainline port of them (kernel/); the scripts and tools are MIT. No firmware: the DSP image is not part of any release here.'
+          } > notes.md
+          flag=; [ "$PRERELEASE" = true ] && flag=--prerelease
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md $flag \
+            out/release/mu300-audio-*.tar.gz out/release/VERSIONS out/release/SHA256SUMS

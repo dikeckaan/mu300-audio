@@ -1,0 +1,8 @@
+# The kernels this release of mu300-audio builds its drivers for: one line each, the kernel choice (mu300-update
+# kernel ...), its release (uname -r), the sha256 of its configuration's settings, the sha256 of its build kit, and
+# the mu300-linux release whose kernel it is. The kits are the release assets of the tag kits-<that release> here
+# (kernel/kits/make-kit-*.sh made them from that release's own build trees); build.sh takes a kit only with this hash.
+# KEY  KREL                   CONFIG                                                            KIT                                                               MU300-LINUX
+5.4    5.4.254-gb50db5b6224c  3fc08f973d75d346366d3e7d816be4fa0972e94a5e0c29679c2ca41ce004c122  447b4a6ef5fbc21b8574f2f86cc847fcf4db0521a726f313559503c0405b2efb  v2026.10.19.1
+6.18   6.18.57                56c95ca5652d6593fa212496472559d8288f89f4505d01c679177e008ae95563  22188ff60ed3fb5ecc539dd3dd5c630f0ffea451ec7ff0da9bd61a476608b8f1  v2026.10.19.1
+7.2    7.2.11                 9821bdd10df180f8dde819bbeeb34bc9926b7268e02e1da8fcff51606bf71844  569316a2f5c481f8e11545eef3343ecc69a94003de032d39158646a6c9c10795  v2026.10.19.1

@@ -110,9 +110,14 @@ fi
 for c in $CMDS; do link "$EXTRA/bin/$c" "$R/opt/mu300/bin/$c"; done
 
 # the running system: the card and the DSP are started when the card is not up yet, or the DSP has just got its
-# firmware (a DSP that runs already is left alone: a call may be on), and the call follower is (re)started
-if [ "$LIVE" = 1 ] && [ -n "$changed" ]; then
-    start=; grep -q sprdphone /proc/asound/cards 2>/dev/null || start=1
+# firmware (a DSP that runs already is left alone: a call may be on), and the call follower is (re)started. A card
+# that is not up is started even when nothing here changed: the links of a set for another kernel are the same
+# links (a kernel switch whose extra could not be had left mu300-audio failed at boot; installing the extra of the
+# running kernel afterwards changed no link, and the card stayed down until the next boot - F50-B, 7.3)
+CARDS=${MU300_ASOUND_CARDS:-/proc/asound/cards}
+card_up=; grep -q sprdphone "$CARDS" 2>/dev/null && card_up=1
+if [ "$LIVE" = 1 ] && { [ -n "$changed" ] || [ -z "$card_up" ]; }; then
+    start=; [ -n "$card_up" ] || start=1
     [ -z "$fw_new" ] || start=1
     if [ -e "$R/etc/openwrt_release" ]; then
         # boot: in the background, as at boot

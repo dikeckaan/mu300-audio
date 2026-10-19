@@ -52,6 +52,29 @@ class Hooks(ShellTest):
         return self.script(shell, self.extra / 'hooks' / name, root, MU300_DISK=self.disk, MU300_EXTRA_DIR=self.extra,
                            MU300_AUDIO_LIVE='0')
 
+    def test_a_card_that_is_down_is_started_even_when_no_link_changed(self):
+        # F50-B, 7.3: the boot's mu300-audio failed (the extra was 7.2's); installing the 7.3 one changed no link
+        bin_ = self.tmp / 'bin'
+        bin_.mkdir()
+        log = self.tmp / 'systemctl.log'
+        (bin_ / 'systemctl').write_text(f'#!/bin/sh\necho "$*" >> {log}\n')
+        (bin_ / 'systemctl').chmod(0o755)
+        cards = self.tmp / 'cards'
+        for shell in self.each_shell():
+            r = self.system('ubuntu')
+            env = dict(MU300_DISK=self.disk, MU300_EXTRA_DIR=self.extra, MU300_AUDIO_LIVE='1', MU300_ASOUND_CARDS=cards,
+                       PATH=f'{bin_}:{os.environ["PATH"]}')
+            self.assertEqual(self.script(shell, self.extra / 'hooks' / 'link', r, **env).returncode, 0)
+            # linked already, the card up: nothing is started
+            log.unlink(missing_ok=True)
+            cards.write_text(' 1 [sprdphonesc2730]: sprdphone-sc273 - sprdphone-sc2730\n')
+            self.assertEqual(self.script(shell, self.extra / 'hooks' / 'link', r, **env).returncode, 0)
+            self.assertFalse(log.exists() and 'restart mu300-audio' in log.read_text())
+            # linked already, the card down: it is started
+            cards.write_text(' 0 [Loopback       ]: Loopback - Loopback\n')
+            self.assertEqual(self.script(shell, self.extra / 'hooks' / 'link', r, **env).returncode, 0)
+            self.assertIn('--no-block restart mu300-audio', log.read_text())
+
     def test_ubuntu_link_and_unlink(self):
         for shell in self.each_shell():
             r = self.system('ubuntu', old=True)

@@ -205,7 +205,7 @@ update: the latest release here can come out before that mu300-linux release is 
 later (or one that could not fetch the new extra during its update) still finds a set. The earlier line goes once
 no supported mu300-linux release has that build.
 
-**7.3** (mainline Linux 7.3, mu300-linux's fourth kernel, from the release after v2026.10.19.3 on): its kit is made
+**7.3** (mainline Linux 7.3, mu300-linux's fourth kernel, from v2026.10.22.1 on): its kit is made
 from that mu300-linux release's own 7.3 build tree (`make-kit-mainline.sh 7.3 7.3 TAG`; a mainline release's tree is
 `linux-7.3`, its kernel release `7.3.0`), like the others. 7.3 put the IIO consumer API into a symbol namespace, so
 the headset driver imports `IIO_CONSUMER` there.

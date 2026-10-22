@@ -101,7 +101,7 @@ class Release(unittest.TestCase):
 
     def test_versions(self):
         lines = (self.out / 'VERSIONS').read_text().splitlines()
-        self.assertEqual([l.split('\t')[0] for l in lines], ['audio'] * 3)
+        self.assertEqual([l.split('\t')[0] for l in lines], ['audio'] * len(primaries()))
         self.assertEqual([l.split('\t')[3] for l in lines], [k[1] for k in primaries()])
 
 

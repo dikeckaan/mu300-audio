@@ -7,7 +7,7 @@
 #   /m     mu300-linux at the release's tag (its upstream/modules: the modem stack the audio stack links against)
 #   /out   where kit-$KEY.tar.xz goes
 #
-#   bash make-kit-mainline.sh KV KEY TAG       e.g. 6.18.57 6.18 v2026.10.19.1
+#   bash make-kit-mainline.sh KV KEY TAG       e.g. 6.18.57 6.18 v2026.10.19.1 (7.3: 7.3 7.3 TAG, the tree linux-7.3)
 #
 # The kit (kit-KEY.tar.xz, one directory kit-KEY/):
 #   build/          the kernel's own external-module tree (scripts/package/install-extmod-build: headers, scripts,
@@ -28,7 +28,8 @@ W=/tmp/kit-$KEY
 D=$W/kit-$KEY
 rm -rf "$W"; mkdir -p "$D/build" "$D/ext/dma" "$D/ext/sprd_modem" "$D/ext/wcn_bsp"
 krel=$(cat "$O/include/config/kernel.release")
-[ "$krel" = "$KV" ] || { echo "$O is $krel, not $KV" >&2; exit 1; }
+# (a mainline release's tree is linux-7.3, its kernel release 7.3.0)
+[ "$krel" = "$KV" ] || [ "$krel" = "$KV.0" ] || { echo "$O is $krel, not $KV" >&2; exit 1; }
 
 # the kernel's own recipe for a tree to build modules against
 (cd "$O" && srctree=$K objtree=$O SRCARCH=arm64 KBUILD_EXTMOD= CC=gcc HOSTCC=gcc MAKE=make \

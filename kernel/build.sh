@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the audio drivers for one kernel of kits/kits.lock, against that kernel's build kit:
 #
-#   kernel/build.sh KEY [OUTDIR]       KEY: 5.4, 6.18 or 7.2; default OUTDIR: out/modules/KEY
+#   kernel/build.sh KEY [OUTDIR]       KEY: 5.4, 6.18, 7.2 or 7.3; default OUTDIR: out/modules/KEY
 #
 # The kit is downloaded from this repository's release kits-<mu300-linux release> (KIT_DIR=DIR: a directory that has
 # kit-KEY.tar.xz already) and used only when its sha256 is the one kits.lock pins. The build runs in Docker, in the
@@ -13,7 +13,7 @@
 # of it kept for the devices that have not updated yet): the first line's set goes to OUTDIR, each later one's to
 # OUTDIR+<the first 12 digits of its CONFIG> (tools/make-extra.sh puts them side by side in the tarball).
 set -eu
-KEY=${1:?usage: kernel/build.sh 5.4|6.18|7.2 [OUTDIR]}
+KEY=${1:?usage: kernel/build.sh 5.4|6.18|7.2|7.3 [OUTDIR]}
 TOP=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${2:-$TOP/out/modules/$KEY}
 REPO=${MU300_AUDIO_REPO:-dikeckaan/mu300-audio}
@@ -35,7 +35,9 @@ KREL=$2 CONFIG=$3 KITSHA=$4 TAG=$5
 # the kit goes where the release's kernel source was (the headers' paths end up in __FILE__ strings, and the same path
 # makes the same bytes)
 case $KEY in 5.4) IMG=mu300-audio-k54; DF=$TOP/kernel/5.4; KB=/src/zte-u30air ;;
-    *) IMG=mu300-audio-mainline; DF=$TOP/kernel/mainline; KB=/src/linux-$KREL ;; esac
+    *) IMG=mu300-audio-mainline; DF=$TOP/kernel/mainline; KB=/src/linux-$KREL
+       # a mainline release's tree is linux-7.3 for the kernel release 7.3.0: the kit's build tree goes where it was
+       [ "${KREL##*.}" != 0 ] || KB=/src/linux-${KREL%.0} ;; esac
 
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 W=$(mktemp -d)

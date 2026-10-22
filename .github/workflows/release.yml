@@ -3,7 +3,7 @@ name: Release
 # Builds the audio extra - for every kernel of kernel/kits/kits.lock its drivers (kernel/build.sh, against that kernel's
 # build kit, checked by hash), the static tools (src/*/build.sh) and tools/make-extra.sh - and publishes the release
 # files under fixed names, so releases/latest/download/NAME always works for mu300-extra: mu300-audio-5.4.tar.gz,
-# mu300-audio-6.18.tar.gz, mu300-audio-7.2.tar.gz, VERSIONS and SHA256SUMS. No firmware: mu300-extra fetches that on the
+# mu300-audio-6.18.tar.gz, mu300-audio-7.2.tar.gz, mu300-audio-7.3.tar.gz, VERSIONS and SHA256SUMS. No firmware: mu300-extra fetches that on the
 # device. Actions > Release > Run workflow on main, with the tag (vMAJOR.MINOR.PATCH): the release's commit is the main
 # commit the workflow ran on (another ref is refused), and a tag or release that exists already is refused. A tag
 # vMAJOR.MINOR.PATCH pushed by hand (from any branch: to try a build on devices before it is merged) makes a

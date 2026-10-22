@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/iio/consumer.h>
+#include <linux/version.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -3439,3 +3440,7 @@ adc_cali_error:
 MODULE_DESCRIPTION("headset & button detect driver v2");
 MODULE_AUTHOR("Yaochuan Li <yaochuan.li@spreadtrum.com>");
 MODULE_LICENSE("GPL");
+/* 7.3 moved the IIO consumer API (iio_channel_get, iio_read_channel_raw) into a symbol namespace */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+MODULE_IMPORT_NS("IIO_CONSUMER");
+#endif

@@ -10,7 +10,7 @@ umask 022
 command -v mu300-extra >/dev/null 2>&1 || { echo "this mu300-linux has no mu300-extra: update it first (mu300-update apply)" >&2; exit 1; }
 # the kernel the device uses (mu300-update kernel; none chosen: the release's 5.4)
 k=$(cat /mnt/mu300-disk/boot/kernel 2>/dev/null || true)
-case $k in 5.4|6.18|7.2) ;; *) k=5.4 ;; esac
+case $k in 5.4|6.18|7.2|7.3) ;; *) k=5.4 ;; esac
 t=mu300-audio-$k.tar.gz
 [ -f "$P/$t" ] || { echo "the release files have no $t (for kernel $k)" >&2; exit 1; }
 (cd "$P" && grep "  $t\$" SHA256SUMS | sha256sum -c - >/dev/null) || { echo "$t does not match SHA256SUMS" >&2; exit 1; }

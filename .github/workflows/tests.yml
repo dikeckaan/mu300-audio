@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kernel: ['5.4', '6.18', '7.2']
+        kernel: ['5.4', '6.18', '7.2', '7.3']
     steps:
       - uses: actions/checkout@v4
       - name: drivers for ${{ matrix.kernel }}

@@ -74,7 +74,7 @@ class Release(unittest.TestCase):
             self.assertEqual(files['./requires'], f'mu300-linux {oldest}\n'.encode())
             self.assertIn(f'./modules/{krel}/KERNEL', files)
             self.assertIn(f'CONFIG={config}\n'.encode(), files[f'./modules/{krel}/KERNEL'])
-            self.assertEqual([n for n in files if n.startswith('./modules/') and krel not in n], [])
+            # the current set, and beside it only the earlier builds kits.lock names (of this release or an earlier one)
             # the earlier builds of this kernel beside it, each under its CONFIG's first 12 digits
             sets = {n.split('/')[2] for n in files if n.startswith('./modules/')}
             earlier = [k for k in kits() if k[0] == key][1:]
@@ -114,11 +114,14 @@ class Lock(unittest.TestCase):
             self.assertTrue(krel.startswith(key + '.'), krel)
 
     def test_one_set_per_build(self):
-        # a kernel's lines: the current build first, then earlier ones of the same release (not of the same build)
+        # a kernel's lines: the current build first, then earlier ones - of the same release with another configuration,
+        # or of an earlier stable release (6.18.57 beside 6.18.58, with the same configuration). Each earlier set goes to
+        # modules/<release>+<12 digits of CONFIG>/ in the tarball and to out/modules/KEY+<12 digits> in the build: both
+        # names must be unique
         for key in {k[0] for k in kits()}:
             lines = [k for k in kits() if k[0] == key]
-            self.assertEqual(len({k[2][:12] for k in lines}), len(lines), key)
-            self.assertEqual(len({k[1] for k in lines}), 1, key)
+            self.assertEqual(len({(k[1], k[2][:12]) for k in lines}), len(lines), key)
+            self.assertEqual(len({k[2][:12] for k in lines[1:]}), len(lines) - 1, key)
             self.assertEqual(sorted(lines, key=lambda k: tag_key(k[4]), reverse=True), lines, key)
 
     def test_build_takes_a_kit_only_with_its_hash(self):

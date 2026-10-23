@@ -2,13 +2,16 @@
 # kernel ...), its release (uname -r), the sha256 of its configuration's settings, the sha256 of its build kit, and
 # the mu300-linux release whose kernel it is. The kits are the release assets of the tag kits-<that release> here
 # (kernel/kits/make-kit-*.sh made them from that release's own build trees); build.sh takes a kit only with this hash.
-# A kernel may have more than one line: the newest mu300-linux release's build first, then the earlier build of the same
-# kernel release, whose set the tarball carries beside it (modules/<release>+<12 digits of CONFIG>/, for the devices
-# that have not updated yet: mu300-audio-dsp loads the set that fits).
+# A kernel may have more than one line: the newest mu300-linux release's build first, then earlier builds of that kernel
+# choice (an earlier stable release, or the same release with another configuration), whose sets the tarball carries
+# beside it (modules/<release>+<12 digits of CONFIG>/, for the devices that have not updated yet: mu300-audio-dsp loads
+# the set that fits).
 # KEY  KREL                   CONFIG                                                            KIT                                                               MU300-LINUX
 5.4    5.4.254-gb50db5b6224c  3fc08f973d75d346366d3e7d816be4fa0972e94a5e0c29679c2ca41ce004c122  447b4a6ef5fbc21b8574f2f86cc847fcf4db0521a726f313559503c0405b2efb  v2026.10.19.1
+6.18   6.18.58                21dc3b74b83884898d153ab6785222210605ccce052a9fcb9d1c532141c5a6be  4b834753aaca4da04c74cdf76838d15c392d7155d3582899aa307dd17aaf4e13  v2026.10.23.2
 6.18   6.18.57                21dc3b74b83884898d153ab6785222210605ccce052a9fcb9d1c532141c5a6be  0032b19b742fda2ba9f226fd942bf2cb3228d07c365339af12ca4c218501f14b  v2026.10.19.3
 6.18   6.18.57                56c95ca5652d6593fa212496472559d8288f89f4505d01c679177e008ae95563  22188ff60ed3fb5ecc539dd3dd5c630f0ffea451ec7ff0da9bd61a476608b8f1  v2026.10.19.1
+7.2    7.2.12                 167a7257b0bcd350643669b3d4dca1f571b0df02170fca96b3decc3f2c6010e8  ff957e6c4c16d4586394e2f967a6a24f000fd56ac452e6627c56f4b75e3e4549  v2026.10.23.2
 7.2    7.2.11                 167a7257b0bcd350643669b3d4dca1f571b0df02170fca96b3decc3f2c6010e8  18543ae17fd94ec5177f5fb36e81e72951cc66c679215ec4f4ee54e43f132dfd  v2026.10.19.3
 7.2    7.2.11                 9821bdd10df180f8dde819bbeeb34bc9926b7268e02e1da8fcff51606bf71844  569316a2f5c481f8e11545eef3343ecc69a94003de032d39158646a6c9c10795  v2026.10.19.1
 7.3    7.3.0                  202bdee65f2ad6574a0b16e1fcd467f7b0a27cb297691708bc8ab790364f796b  6d21a81ad42fdd70961d6f57a975a61c21f4ae6521e915e46158c482448c079f  v2026.10.22.1

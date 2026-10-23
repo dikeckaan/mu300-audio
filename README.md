@@ -195,10 +195,12 @@ kits are byte for byte the ones mu300-linux v2026.10.19.1 shipped, apart from th
 
 On the device, `mu300-audio-dsp` loads a set only when its `KERNEL` file names the running kernel's own
 configuration (the sha256 of `/proc/config.gz`'s settings): a mu300-linux release that changes a kernel's
-configuration needs a new release here, built against its kits.
+configuration, or moves a kernel to a new stable release (a new `uname -r`), needs a new release here, built against
+its kits.
 
-Such a release keeps the earlier build too. `kits.lock` may hold more than one line for a kernel: the build of the
-newest mu300-linux release first, then the build before it. `kernel/build.sh KEY` builds them all, and the tarball carries the
+Such a release keeps the earlier builds too. `kits.lock` may hold more than one line for a kernel: the build of the
+newest mu300-linux release first, then the builds before it (6.18.58 and 7.2.12 from mu300-linux v2026.10.23.2 on,
+with the 6.18.57 and 7.2.11 builds beside them). `kernel/build.sh KEY` builds them all, and the tarball carries the
 earlier set beside the current one, as `modules/<release>+<the first 12 digits of its CONFIG>/`. `mu300-audio-dsp`
 loads whichever set fits the running kernel. One tarball then works on a device before and after its mu300-linux
 update: the latest release here can come out before that mu300-linux release is promoted, and a device updated

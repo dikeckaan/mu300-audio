@@ -85,7 +85,8 @@ for m in $MODULES; do
 done
 # the patches are in: a string each one adds to a module
 for mark in 'audio_sipc:dropped a stale reply' 'mcdt_hw_r2p0:enabled the agcp mcdt clock' 'snd-soc-sprd-card:dummy_on_defer' \
-        'audio_mem:shm_shift' 'snd-soc-sprd-vbc-v4:rejected (%d)'; do
+        'audio_mem:shm_shift' 'snd-soc-sprd-vbc-v4:rejected (%d)' 'agdsp_access:power up timeout (bounded' \
+        'snd-soc-sprd-codec-ump9620:still enabled, disabled before put'; do
     LC_ALL=C grep -aq "${mark#*:}" "$W/out/${mark%%:*}.ko" || { echo "${mark%%:*}.ko lacks its patch ('${mark#*:}')" >&2; exit 1; }
 done
 rm -rf "$OUT"; mkdir -p "$OUT"

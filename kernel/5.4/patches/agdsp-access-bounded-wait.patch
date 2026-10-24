@@ -1,0 +1,278 @@
+agdsp_access: a bounded wait for the AGDSP power domain, without the lock
+
+agdsp_access_enable() mails the DSP and then polls the PMU for the domain to come
+up - up to 1000000 times, with dsp_ac->spin_lock held, about 6 s. Before the DSP
+runs an image the domain never comes up, and the card's bind reads the codec's
+digital registers before mu300-audio-dsp has written the firmware: on F50 (5.4)
+each of 19 reads took the full 6 s, so the card took two minutes to bind
+
+  [   44.42] ERR: agdsp_access_enable wait agdsp power up timeout!
+  ...                                          (19 of them)
+  [  147.61] input: sprdphone-sc2730 Headset Jack as .../sound@0/sound/card1/...
+
+and when mu300-audio-dsp found it unregistered meanwhile and rebound it, another
+two: the DSP only answered four to five minutes after boot.
+
+The mainline port fixed the same loop for 6.18 (where it ended in a soft-lockup
+panic, mu300-linux FINDINGS 188); this is that change for 5.4. The wait runs with
+the lock dropped (the count is taken first, so a disable meanwhile cannot clear
+the access bit under it, and a second caller during the first one's wait waits as
+well), sleeping callers poll for up to 200 ms, atomic ones spin for at most 2 ms,
+and a timeout gives the count back and returns -EBUSY. A domain that comes up does
+so within tens of microseconds. restore_access(), which runs with the lock held,
+gets the 2 ms spin.
+
+--- a/sprd_audio/agdsp_access/agdsp_access.c
++++ b/sprd_audio/agdsp_access/agdsp_access.c
+@@ -18,6 +18,7 @@
+ #include <linux/hwspinlock.h>
+ #include <linux/io.h>
+ #include <linux/kthread.h>
++#include <linux/ktime.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/module.h>
+ #include <linux/of_device.h>
+@@ -101,6 +102,8 @@
+ 	u32 ap_access_ena_reg;
+ 	u32 ap_access_ena_mask;
+ 	spinlock_t spin_lock;
++	/* MU300: a caller is waiting for the power domain (agdsp_access_enable) */
++	bool waking;
+ };
+ 
+ static struct agdsp_access  *g_agdsp_access;
+@@ -402,21 +405,78 @@
+ 	g_agdsp_mboxchan = mboxchan;
+ }
+ EXPORT_SYMBOL(agdsp_set_mboxchan);
++
++/*
++ * MU300: wait for the AGDSP power domain, never with a lock held and never for long. This driver polled the PMU up to
++ * 1000000 times under dsp_ac->spin_lock, about 6 s, and the domain does not come up before the DSP runs its image:
++ * the card's bind reads the codec's digital registers one by one before mu300-audio-dsp has written the firmware,
++ * each read held a CPU for 6 s, and binding the card took two minutes (19 reads) - twice, when mu300-audio-dsp
++ * rebound it. A domain that comes up does so within tens of microseconds. Callers that may sleep poll with
++ * usleep_range() for up to 200 ms; atomic ones (a trigger) spin for at most 2 ms. A timeout is an error the caller
++ * sees (-EBUSY), not a hang. The same as the mainline port's (kernel/mainline, mu300-linux FINDINGS 188).
++ */
++#define AGDSP_WAKE_TIMEOUT_US		200000
++#define AGDSP_WAKE_TIMEOUT_ATOMIC_US	2000
++
++static int agdsp_wait_powered_us(struct agdsp_access *dsp_ac, bool may_sleep,
++				 unsigned int timeout_us)
++{
++	u32 mask = dsp_ac->audcp_pmu_sys_slp_state_mask;
++	u32 shift = ffs(mask) - 1;
++	ktime_t end = ktime_add_us(ktime_get(), timeout_us);
++	u32 val;
++	int ret;
++
++	for (;;) {
++		ret = regmap_read(dsp_ac->pmu_apb,
++			dsp_ac->audcp_pmu_pwr_status4_reg, &val);
++		if (ret)
++			return ret;
++		/* 0: power up finished;7:power off */
++		if (((val & mask) >> shift) == PD_WAKEUP_STATE)
++			return 0;
++		if (ktime_after(ktime_get(), end))
++			return -ETIMEDOUT;
++		if (may_sleep)
++			usleep_range(50, 100);
++		else
++			udelay(5);
++	}
++}
++
++static int agdsp_wait_powered(struct agdsp_access *dsp_ac)
++{
++	if (preemptible())
++		return agdsp_wait_powered_us(dsp_ac, true, AGDSP_WAKE_TIMEOUT_US);
++	return agdsp_wait_powered_us(dsp_ac, false, AGDSP_WAKE_TIMEOUT_ATOMIC_US);
++}
+ 
++/* with dsp_ac->spin_lock held: give back one count, and the access bit with the last one */
++static void agdsp_access_put_locked(struct agdsp_access *dsp_ac)
++{
++	if (AGCP_READL(&dsp_ac->state->ap_enable_cnt) > 0)
++		AGCP_WRITEL(AGCP_READL(&dsp_ac->state->ap_enable_cnt) - 1,
++			&dsp_ac->state->ap_enable_cnt);
++	if (!dsp_ac->auto_agcp_access &&
++	    AGCP_READL(&dsp_ac->state->ap_enable_cnt) == 0)
++		regmap_update_bits(dsp_ac->agcp_ahb, dsp_ac->ap_access_ena_reg,
++				   dsp_ac->ap_access_ena_mask, 0);
++}
++
+ int agdsp_access_enable(void)
+ {
+ 	int ret = 0;
+-	int cnt = 0;
+ 	int val = 0;
++	bool first, wait;
+ 	struct agdsp_access *dsp_ac = g_agdsp_access;
+ 	static unsigned long long msg_val[MBOX_TX_QUEUE_LEN];
+ 
+-	pr_dbg("%s entry auto agcp access=%d\n", __func__,
+-		dsp_ac->auto_agcp_access);
+ 	if (!dsp_ac) {
+ 		pr_err("agdsp access not init, exit\n");
+ 		return -EINVAL;
+ 	}
++	pr_dbg("%s entry auto agcp access=%d\n", __func__,
++		dsp_ac->auto_agcp_access);
+ 
+ 	if (!dsp_ac->ready || !dsp_ac->state) {
+ 		pr_err("agdsp access not ready, dsp_ac->ready=%d, dsp_ac->state=%p\n",
+@@ -435,7 +495,7 @@
+ 			pr_err("%s, regmap_update_bits AUDACCESS_APB_AGCP_CTRL error!\n",
+ 			__func__);
+ 			ret = -EINVAL;
+-			goto exit;
++			goto unlock;
+ 		}
+ 
+ 		ret = regmap_read(dsp_ac->agcp_ahb,
+@@ -444,85 +504,62 @@
+ 			pr_err("%s, regmap_read AUDACCESS_APB_AGCP_CTRL error!\n",
+ 				__func__);
+ 			ret = -EINVAL;
+-			goto exit;
++			goto unlock;
+ 		}
+ 		if (!(dsp_ac->ap_access_ena_mask & val)) {
+ 			pr_err("%s, AUDACCESS_APB_AGCP_ACCESS_EN not enable! value: %x\n",
+ 				__func__, val);
+ 			ret = -EINVAL;
+-			goto exit;
++			goto unlock;
+ 		}
+ 	}
+-	if (dsp_ac->state->ap_enable_cnt == 0) {
++	first = AGCP_READL(&dsp_ac->state->ap_enable_cnt) == 0;
++	if (first) {
+ 		/*
+ 		 * send a mail to AGDSP to wake up it,
+ 		 * 100 is an invalid command
+ 		 */
+-		ret = regmap_read(dsp_ac->agcp_ahb, dsp_ac->ap_access_ena_reg, &val);
+-		if (ret != 0)
+-			pr_err("%s, regmap_read ap_access_ena_reg error!\n", __func__);
+-		else
+-			pr_info("%s, ap_access_ena_reg (wake up dsp) val = 0x%x\n",
+-				__func__, val);
++		pr_info("%s, ap_access_ena_reg (wake up dsp) val = 0x%x\n",
++			__func__, val);
+ 		msg_val[msg_index] = 100;
+ 		ret = mbox_send_message(g_agdsp_mboxchan, (void *)&msg_val[msg_index]);
+-		if (ret < 0) {
++		if (ret < 0)
+ 			pr_err("%s, mbox send message error! ret=%d\n", __func__, ret);
+-		}
+ 		mbox_chan_txdone(g_agdsp_mboxchan, 0);
+ 		msg_index++;
+ 		if (msg_index >= MBOX_TX_QUEUE_LEN)
+ 			msg_index = 0;
+-		udelay(20);
++		dsp_ac->waking = true;
++	}
++	/* a caller that comes while the first one waits has to wait as well: the domain is not up yet */
++	wait = dsp_ac->waking;
++	/* counted now, so that a disable meanwhile does not take the access bit from under the wait */
++	AGCP_WRITEL(AGCP_READL(&dsp_ac->state->ap_enable_cnt) + 1,
++		&dsp_ac->state->ap_enable_cnt);
++	spin_unlock(&dsp_ac->spin_lock);
+ 
+-		do {
+-			cnt++;
+-			ret = regmap_read(dsp_ac->pmu_apb,
+-				dsp_ac->audcp_pmu_pwr_status4_reg, &val);
+-			pr_dbg("%s, regmap_read val=0x%x!,mask:%x, ffs_mask:%d\n",
+-				__func__, val,
+-				dsp_ac->audcp_pmu_sys_slp_state_mask,
+-				ffs(dsp_ac->audcp_pmu_sys_slp_state_mask));
+-			if (ret != 0) {
+-				pr_err("%s, regmap_read error!\n", __func__);
+-				break;
+-			}
+-			/* 0: power up finished;7:power off */
+-			if (((val & dsp_ac->audcp_pmu_sys_slp_state_mask) >>
+-				(ffs(dsp_ac->audcp_pmu_sys_slp_state_mask)-1))
+-					== PD_WAKEUP_STATE)
+-				break;
+-
+-			/*
+-			 * Do not need delay,
+-			 * normally we need read only one time
+-			 */
+-			udelay(5);
+-		} while (cnt < TRY_CNT_MAX);
+-		if (cnt == TRY_CNT_MAX) {
+-			pr_err("ERR: %s wait agdsp power up timeout!\n",
+-				__func__);
+-			ret = -EBUSY;
+-			goto exit;
++	ret = 0;
++	if (wait) {
++		ret = agdsp_wait_powered(dsp_ac);
++		spin_lock(&dsp_ac->spin_lock);
++		if (first)
++			dsp_ac->waking = false;
++		if (ret) {
++			pr_err("ERR: %s wait agdsp power up timeout (bounded, %d)!\n",
++				__func__, ret);
++			agdsp_access_put_locked(dsp_ac);
++			ret = -EBUSY;
+ 		}
+-		ret = regmap_read(dsp_ac->agcp_ahb, dsp_ac->ap_access_ena_reg, &val);
+-		if (ret != 0)
+-			pr_err("%s, regmap_read ap_access_ena_reg error!\n", __func__);
+-		else
+-			pr_info("%s, ap_access_ena_reg (wake up done) val = 0x%x\n",
+-				__func__, val);
++		spin_unlock(&dsp_ac->spin_lock);
++		if (!ret && first)
++			pr_info("%s, ap_access_ena_reg (wake up done)\n", __func__);
+ 	}
++	pr_dbg("%s, ap_enable_cnt=%d, cp_enable_cnt=%d\n", __func__,
++		dsp_ac->state->ap_enable_cnt, dsp_ac->state->cp_enable_cnt);
++	return ret;
+ 
+-	AGCP_WRITEL(AGCP_READL(&dsp_ac->state->ap_enable_cnt) + 1,
+-		&dsp_ac->state->ap_enable_cnt);
+-	pr_dbg("%s out\n", __func__);
+-
+-exit:
++unlock:
+ 	spin_unlock(&dsp_ac->spin_lock);
+-	pr_dbg("%s, ap_enable_cnt=%d, cp_enable_cnt=%d.cnt=%d\n",
+-		__func__, dsp_ac->state->ap_enable_cnt,
+-		dsp_ac->state->cp_enable_cnt, cnt);
+-
+ 	return ret;
+ }
+ EXPORT_SYMBOL(agdsp_access_enable);
+@@ -685,22 +722,8 @@
+ 		}
+ 		mbox_chan_txdone(g_agdsp_mboxchan, 0);
+ 		udelay(20);
+-		do {
+-			ret = regmap_read(dsp_ac->pmu_apb,
+-				dsp_ac->audcp_pmu_pwr_status4_reg, &val);
+-			pr_dbg("%s, regmap_read val=0x%x!\n", __func__, val);
+-			if (ret != 0) {
+-				pr_err("%s, regmap_read error!\n", __func__);
+-				break;
+-			}
+-			/* 0: power up finished;7:power off */
+-			if (((val & dsp_ac->audcp_pmu_sys_slp_state_mask) >>
+-				(ffs(dsp_ac->audcp_pmu_sys_slp_state_mask)-1))
+-					== PD_WAKEUP_STATE)
+-				break;
+-			udelay(5);
+-		} while (++cnt < TRY_CNT_MAX);
+-		if (cnt == TRY_CNT_MAX) {
++		/* MU300: a bounded wait (agdsp_wait_powered_us), this runs with the spinlock held */
++		if (agdsp_wait_powered_us(dsp_ac, false, AGDSP_WAKE_TIMEOUT_ATOMIC_US)) {
+ 			pr_err("ERR: %s wait agdsp power up timeout!\n",
+ 				   __func__);
+ 			ret = -EBUSY;

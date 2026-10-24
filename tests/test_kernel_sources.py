@@ -194,5 +194,27 @@ class Bounds54(unittest.TestCase):
         self.assertEqual(c_function(dai, 'vbc_profile_store'), c_function(main, 'vbc_profile_store'))
 
 
+    def test_the_headset_disables_before_it_puts(self):
+        # a regulator put while enabled is a WARN in _regulator_put() at every unbind of the card, and a leaked enable
+        for tree in (self.src, MOD):
+            deinit = c_function((tree / 'sprd/codec/sprd/ump9620/codec/sprd-headset-ump9620.c').read_text(errors='replace'),
+                                'sprd_headset_power_deinit')
+            self.assertLess(deinit.index('regulator_disable(power_temp->hdst_regu)'),
+                            deinit.index('regulator_put(power_temp->hdst_regu)'), tree)
+            self.assertIn('power_temp->en = false', deinit, tree)
+
+    def test_the_agdsp_wait_is_bounded_and_unlocked(self):
+        # 1000000 polls under the spinlock were 6 s per codec register read while the DSP had no image yet
+        agdsp = (self.src / 'sprd_audio/agdsp_access/agdsp_access.c').read_text(errors='replace')
+        for name in ('agdsp_access_enable', 'restore_access'):
+            self.assertNotIn('TRY_CNT_MAX', c_function(agdsp, name), name)
+        enable = c_function(agdsp, 'agdsp_access_enable')
+        before = enable[:enable.index('agdsp_wait_powered(dsp_ac)')]
+        # the lock is dropped before the wait
+        self.assertGreater(before.rindex('spin_unlock(&dsp_ac->spin_lock)'), before.rindex('spin_lock(&dsp_ac->spin_lock)'))
+        self.assertIn('AGDSP_WAKE_TIMEOUT_US\t\t200000', agdsp)
+        self.assertIn('AGDSP_WAKE_TIMEOUT_ATOMIC_US\t2000', agdsp)
+
+
 if __name__ == '__main__':
     unittest.main()

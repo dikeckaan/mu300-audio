@@ -23,13 +23,15 @@ rm -rf "$A"; mkdir -p "${A%/*}"
 cp -r /repo/kernel/5.4/audio_driver "$A"
 # the order of mu300-linux's kernel/build-audio.sh, which built them for the releases up to v2026.10.19.1, then the
 # voice capture tap's MCDT watermark and DMA fragment as module parameters, voice_c_wmk and voice_c_frag (mu300-linux
-# PR #336; the defaults are the vendor's 160/160), and then the bounds checks of the mainline port (audio-ctl-bounds)
+# PR #336; the defaults are the vendor's 160/160), the bounds checks of the mainline port (audio-ctl-bounds), its
+# bounded wait for the AGDSP power domain (agdsp-access-bounded-wait), and the headset's regulators switched off before
+# they are put (headset-power-deinit-disable)
 for p in audio-mem-fixed-region audio-mem-shm-shift mcdt-enable-clock sprd-card-dummy-on-defer \
          audio-pcm-period-timer audio-pcm-pointer-agcp-access audio-fe-dai-formats audio-sipc-stale-reply \
-         audio-fe-voice-c-mcdt-params audio-ctl-bounds; do
+         audio-fe-voice-c-mcdt-params audio-ctl-bounds agdsp-access-bounded-wait headset-power-deinit-disable; do
     (cd "$A" && patch -p1 -s -f < "/repo/kernel/5.4/patches/$p.patch")
 done
-[ "$(ls /repo/kernel/5.4/patches/*.patch | wc -l)" = 10 ] || { echo "patches/ has a patch this build does not apply" >&2; exit 1; }
+[ "$(ls /repo/kernel/5.4/patches/*.patch | wc -l)" = 12 ] || { echo "patches/ has a patch this build does not apply" >&2; exit 1; }
 
 # headers these Kbuilds include by name without putting the directory on their own path
 INC="-I$A/sprd_audio/agdsp_access -I$A/sprd_audio/audiomem -I$A/sprd_audio/audiosipc"

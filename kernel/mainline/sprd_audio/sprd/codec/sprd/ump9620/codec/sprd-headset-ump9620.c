@@ -286,6 +286,21 @@ static void sprd_headset_power_deinit(void)
 	while (i < HDST_REGULATOR_COUNT) {
 		power_temp = &power[i++];
 		if (power_temp->hdst_regu) {
+			/*
+			 * MU300: sprd_headset_regulator_init() keeps CLK_DCL_32K and
+			 * DIG_CLK_INTC on for as long as the codec is probed, and this
+			 * put them while still enabled: a WARN in _regulator_put()
+			 * (core.c, "Docs say you must disable before calling
+			 * regulator_put()") for each whenever the card was unbound
+			 * (mu300-audio-dsp rebinds it), the enable leaked, and 'en'
+			 * stayed true, so the next probe never enabled the new handle.
+			 */
+			if (power_temp->en) {
+				pr_info("%s: %s still enabled, disabled before put\n",
+					__func__, power_temp->name);
+				regulator_disable(power_temp->hdst_regu);
+				power_temp->en = false;
+			}
 			regulator_put(power_temp->hdst_regu);
 			power_temp->hdst_regu = NULL;
 			power_temp->name = NULL;

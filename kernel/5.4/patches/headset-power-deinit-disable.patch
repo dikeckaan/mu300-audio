@@ -1,0 +1,47 @@
+headset: disable what is still on before putting it
+
+sprd_headset_regulator_init() turns CLK_DCL_32K and DIG_CLK_INTC on when the
+codec's component probes ("enable these all the time after bootup") and nothing
+turns them off again: sprd_headset_power_deinit(), which runs when the component
+is removed, put both while they were still enabled. Every unbind of the card -
+mu300-audio-dsp rebinds it when it finds it unregistered - therefore logged
+
+  WARNING: ... at drivers/regulator/core.c:2173 _regulator_put+0x104/0x114
+   regulator_put
+   sprd_headset_power_deinit [snd_soc_sprd_codec_ump9620]
+   sprd_headset_remove
+   sprd_codec_soc_remove
+   snd_soc_component_remove ... snd_soc_unregister_card ... unbind_store
+
+twice (one per regulator; WARN_ON(regulator->enable_count), "Docs say you must
+disable before calling regulator_put()"). The enable count of the regulator
+itself leaked with each, and 'en' stayed true, so the next probe's
+sprd_headset_power_set(..., true) took the new handle as already on and never
+enabled it.
+
+Disable each one that is on before it is put, and clear 'en'.
+
+--- a/sprd/codec/sprd/ump9620/codec/sprd-headset-ump9620.c
++++ b/sprd/codec/sprd/ump9620/codec/sprd-headset-ump9620.c
+@@ -285,6 +285,21 @@
+ 	while (i < HDST_REGULATOR_COUNT) {
+ 		power_temp = &power[i++];
+ 		if (power_temp->hdst_regu) {
++			/*
++			 * MU300: sprd_headset_regulator_init() keeps CLK_DCL_32K and
++			 * DIG_CLK_INTC on for as long as the codec is probed, and this
++			 * put them while still enabled: a WARN in _regulator_put()
++			 * (core.c, "Docs say you must disable before calling
++			 * regulator_put()") for each whenever the card was unbound
++			 * (mu300-audio-dsp rebinds it), the enable leaked, and 'en'
++			 * stayed true, so the next probe never enabled the new handle.
++			 */
++			if (power_temp->en) {
++				pr_info("%s: %s still enabled, disabled before put\n",
++					__func__, power_temp->name);
++				regulator_disable(power_temp->hdst_regu);
++				power_temp->en = false;
++			}
+ 			regulator_put(power_temp->hdst_regu);
+ 			power_temp->hdst_regu = NULL;
+ 			power_temp->name = NULL;

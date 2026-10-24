@@ -528,7 +528,8 @@ int agdsp_access_enable(void)
 		if (first)
 			dsp_ac->waking = false;
 		if (ret) {
-			pr_err("ERR: %s wait agdsp power up timeout!\n", __func__);
+			pr_err("ERR: %s wait agdsp power up timeout (bounded, %d)!\n",
+				__func__, ret);
 			agdsp_access_put_locked(dsp_ac);
 			ret = -EBUSY;
 		}
